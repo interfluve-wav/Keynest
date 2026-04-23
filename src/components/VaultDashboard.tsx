@@ -47,13 +47,13 @@ function ToastContainer() {
   }, [])
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none" aria-live="polite" aria-atomic="false">
       {toasts.map(t => (
         <div key={t.id} className={`animate-slideUp px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg pointer-events-auto ${
           t.type === 'success' ? 'bg-emerald-500 text-white' :
           t.type === 'error' ? 'bg-red-500 text-white' :
           'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-white'
-        }`}>
+        }`} role={t.type === 'error' ? 'alert' : 'status'}>
           {t.message}
         </div>
       ))}
@@ -326,7 +326,8 @@ export function VaultDashboard({ onOpenSettings }: { onOpenSettings?: () => void
             {hasBiometric && (
               <button
                 onClick={handleBiometricLock}
-                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                aria-label="Lock with Touch ID"
                 title="Lock with Touch ID"
               >
                 <Fingerprint className="w-4 h-4" />
@@ -334,21 +335,23 @@ export function VaultDashboard({ onOpenSettings }: { onOpenSettings?: () => void
             )}
             <button
               onClick={exportVault}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              aria-label="Export vault"
               title="Export vault (Cmd+E)"
             >
               <Download className="w-4 h-4" />
             </button>
             <button
               onClick={() => onOpenSettings?.()}
-              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+              className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              aria-label="Open settings"
               title="Settings"
             >
               <Settings className="w-4 h-4" />
             </button>
             <button
               onClick={lock}
-              className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+              className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
               title="Lock vault (Cmd+L)"
             >
               <Lock className="w-4 h-4" />
@@ -368,6 +371,7 @@ export function VaultDashboard({ onOpenSettings }: { onOpenSettings?: () => void
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search keys... (Cmd+F)"
+            aria-label="Search keys"
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500/50 transition-all text-sm dark:bg-slate-900/50 dark:border-slate-800 dark:text-white dark:placeholder-slate-500"
           />
           {searchQuery && (

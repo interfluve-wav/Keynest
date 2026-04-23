@@ -120,10 +120,12 @@ export function VaultList({ onSelect, onCreate }: Props) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredVaults.map((vault) => (
-              <div
+              <button
                 key={vault.id}
+                type="button"
                 onClick={() => onSelect(vault)}
-                className="group bg-white border border-slate-200 rounded-xl p-5 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/5 transition-all cursor-pointer dark:bg-slate-900/50 dark:border-slate-800"
+                className="group bg-white border border-slate-200 rounded-xl p-5 hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/5 transition-all cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-emerald-500/50 dark:bg-slate-900/50 dark:border-slate-800"
+                aria-label={`Open vault ${vault.name}, created ${new Date(vault.created).toLocaleDateString()}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
@@ -139,12 +141,13 @@ export function VaultList({ onSelect, onCreate }: Props) {
                     }}
                     disabled={deleting === vault.id}
                     className="p-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-500 transition-all dark:text-slate-400 dark:hover:text-red-400"
+                    aria-label={deleting === vault.id ? 'Deleting vault' : `Delete vault ${vault.name}`}
                     title="Delete vault"
                   >
                     {deleting === vault.id ? '...' : '×'}
                   </button>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}

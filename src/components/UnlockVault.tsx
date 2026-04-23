@@ -200,7 +200,11 @@ export function UnlockVault({ vault, onBack }: Props) {
             )}
 
             <form onSubmit={handlePasswordUnlock} className="space-y-4">
+              <label htmlFor="passphrase" className="sr-only">
+                Passphrase
+              </label>
               <input
+                id="passphrase"
                 type="password"
                 value={passphrase}
                 onChange={(e) => setPassphrase(e.target.value)}
@@ -210,7 +214,7 @@ export function UnlockVault({ vault, onBack }: Props) {
               />
 
               {error && (
-                <div className="flex items-center gap-2 text-red-600 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 dark:text-red-400">
+                <div className="flex items-center gap-2 text-red-600 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 dark:text-red-400" role="alert">
                   <ShieldAlert className="w-4 h-4 flex-shrink-0" />
                   {error}
                 </div>
