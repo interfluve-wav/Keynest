@@ -96,7 +96,7 @@ npm run tauri build      # Build the Tauri app bundle
 - `git.rs` — Git integration: `git_is_repo`, `git_get_repo_config`, `git_set_ssh_key` (writes to `.git/config`), `git_remove_ssh_key`, `git_setup_deploy_key` (generates deploy key and configures repo)
 - `settings.rs` — `settings_get`/`set`/`reset` using Tauri's `store` plugin (persisted in app storage)
 - `biometric.rs` — Touch ID via `objc2-local-authentication`; stores encryption key in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, `biometric_available`, `biometric_store_key`, `biometric_retrieve_key`, `biometric_unlock` (full flow)
-- `proxy.rs` — Agent Chest proxy management; spawns Go binary, bridges management API via reqwest; 13 Tauri commands for credentials, rules, bindings, audit
+- `proxy.rs` — Agent Chest proxy management; spawns Go binary, bridges management API via reqwest; 14 Tauri commands for credentials, rules, bindings, audit, discover
 
 **Data flow (unlock):**
 1. Frontend reads vault metadata (salt + ciphertext) via `vault_load`
@@ -109,12 +109,16 @@ npm run tauri build      # Build the Tauri app bundle
 ### Agent Chest Proxy (`agent-chest-proxy/`)
 
 Standalone Go binary that the Rust backend spawns as a child process. Provides:
-- HTTP/HTTPS proxy on `:8080` with credential injection (Bearer, API key header, Basic auth)
-- Management API on `:8081` with REST endpoints for credentials, rules, bindings, audit
+- HTTP/HTTPS proxy on `:8080` with credential injection (Bearer, API key header, Basic auth, passthrough)
+- Management API on `:8081` with REST endpoints for credentials, rules, bindings, audit, discover, explicit proxy
 - Firewall-like access rules (allow/deny by host pattern, path pattern, method)
 - Multi-vault RBAC bindings to scope agent blast radius
 - Audit trail with file persistence and subscriber model
 - HTTPS CONNECT upgrade to forward-proxy when credentials match
+- Network guard (SSRF prevention): blocks private IPs, loopback, cloud metadata endpoints (169.254.169.254)
+- DNS rebinding protection: resolves hostname, validates IP, then connects directly
+- `/v1/discover` endpoint: returns available services and credential keys for agents
+- `/proxy/{host}/{path}` explicit proxy endpoint for clients that can't use HTTPS_PROXY
 
 **Build:** `cd agent-chest-proxy && go build -o ../src-tauri/ ./cmd/agent-chest-proxy/`
 **Binary location:** `src-tauri/agent-chest-proxy` (Rust looks for this path)

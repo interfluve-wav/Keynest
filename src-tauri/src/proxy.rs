@@ -399,3 +399,41 @@ pub async fn proxy_audit_log(
         .map_err(|e| format!("Parse error: {}", e))?;
     Ok(entries)
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoverService {
+    pub host: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoverResponse {
+    pub vault: String,
+    pub services: Vec<DiscoverService>,
+    pub available_credential_keys: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn proxy_discover(
+    mgmt_port: Option<u16>,
+    vault_id: Option<String>,
+) -> Result<DiscoverResponse, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let mut url = format!("{}/api/v1/discover", mgmt_base_url(mgmt_port));
+    if let Some(vid) = vault_id {
+        url = format!("{}?vault_id={}", url, vid);
+    }
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let discover: DiscoverResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(discover)
+}

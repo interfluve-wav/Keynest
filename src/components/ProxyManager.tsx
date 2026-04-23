@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Shield, Play, Square, Plus, Trash2, RefreshCw,
   Server, Lock, Eye, EyeOff,
-  FileText, Key as KeyIcon, Filter, Link
+  FileText, Key as KeyIcon, Filter, Link, Compass
 } from 'lucide-react'
 import { useVaultStore } from '../lib/store'
 import {
@@ -10,12 +10,12 @@ import {
   proxyListCredentials, proxyAddCredential, proxyDeleteCredential,
   proxyListRules, proxyAddRule, proxyDeleteRule,
   proxyListBindings, proxyAddBinding, proxyDeleteBinding,
-  proxyAuditLog
+  proxyAuditLog, proxyDiscover
 } from '../lib/api'
-import type { ProxyCredential, ProxyRule, ProxyBinding, AuditEntry } from '../lib/types'
+import type { ProxyCredential, ProxyRule, ProxyBinding, AuditEntry, DiscoverService } from '../lib/types'
 import { ErrorBoundary } from './ErrorBoundary'
 
-type ProxyTab = 'credentials' | 'rules' | 'bindings' | 'audit'
+type ProxyTab = 'discover' | 'credentials' | 'rules' | 'bindings' | 'audit'
 
 export function ProxyManager() {
   const {
@@ -24,11 +24,12 @@ export function ProxyManager() {
     currentVault
   } = useVaultStore()
 
-  const [activeTab, setActiveTab] = useState<ProxyTab>('credentials')
+  const [activeTab, setActiveTab] = useState<ProxyTab>('discover')
   const [showAddCred, setShowAddCred] = useState(false)
   const [showAddRule, setShowAddRule] = useState(false)
   const [showAddBinding, setShowAddBinding] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [discoverData, setDiscoverData] = useState<{ services: DiscoverService[]; available_credential_keys: string[] } | null>(null)
 
   const refreshAll = useCallback(async () => {
     const status = await proxyGetStatus().catch(() => null)
@@ -42,6 +43,10 @@ export function ProxyManager() {
       setProxyBindings(bindings)
       const audit = await proxyAuditLog(50).catch(() => [])
       setProxyAuditEntries(audit)
+      const disco = await proxyDiscover(undefined, currentVault?.id).catch(() => null)
+      if (disco) {
+        setDiscoverData({ services: disco.services, available_credential_keys: disco.available_credential_keys })
+      }
     }
   }, [setProxyStatus, setProxyCredentials, setProxyRules, setProxyBindings, setProxyAuditEntries])
 
@@ -139,6 +144,7 @@ export function ProxyManager() {
             </div>
 
             <div className="flex items-center gap-2">
+              <TabButton active={activeTab === 'discover'} onClick={() => setActiveTab('discover')} icon={<Compass className="w-4 h-4" />} label="Discover" />
               <TabButton active={activeTab === 'credentials'} onClick={() => setActiveTab('credentials')} icon={<KeyIcon className="w-4 h-4" />} label={`Credentials (${proxyCredentials.length})`} />
               <TabButton active={activeTab === 'rules'} onClick={() => setActiveTab('rules')} icon={<Filter className="w-4 h-4" />} label={`Rules (${proxyRules.length})`} />
               <TabButton active={activeTab === 'bindings'} onClick={() => setActiveTab('bindings')} icon={<Link className="w-4 h-4" />} label={`RBAC (${proxyBindings.length})`} />
@@ -166,6 +172,7 @@ export function ProxyManager() {
               )}
             </div>
 
+            {activeTab === 'discover' && <DiscoverTab data={discoverData} onRefresh={refreshAll} />}
             {activeTab === 'credentials' && <CredentialsList creds={proxyCredentials} onDelete={async (id) => { await proxyDeleteCredential(id); await refreshAll() }} />}
             {activeTab === 'rules' && <RulesList rules={proxyRules} onDelete={async (id) => { await proxyDeleteRule(id); await refreshAll() }} />}
             {activeTab === 'bindings' && <BindingsList bindings={proxyBindings} credentials={proxyCredentials} rules={proxyRules} onDelete={async (id) => { await proxyDeleteBinding(id); await refreshAll() }} />}
@@ -387,6 +394,82 @@ function BindingsList({ bindings, credentials, rules, onDelete }: {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function DiscoverTab({ data, onRefresh }: { data: { services: DiscoverService[]; available_credential_keys: string[] } | null; onRefresh: () => void }) {
+  if (!data) {
+    return (
+      <div className="text-center py-8 border-2 border-dashed border-slate-300 rounded-xl dark:border-slate-700">
+        <Compass className="w-8 h-8 mx-auto mb-3 text-slate-400 dark:text-slate-600" />
+        <p className="text-slate-600 dark:text-slate-500">No discover data available</p>
+        <p className="text-sm text-slate-500 dark:text-slate-600 mt-1">Start the proxy and configure credentials/rules to see available services.</p>
+        <button onClick={onRefresh} className="mt-3 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-medium rounded-lg transition-all text-sm">
+          Refresh
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
+          <Shield className="w-4 h-4 text-emerald-500" /> Network Guard
+        </h4>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          The proxy blocks requests to private IPs (RFC1918), loopback addresses, link-local addresses, and cloud metadata endpoints (169.254.169.254) by default to prevent SSRF attacks. Use <code className="bg-slate-200 dark:bg-slate-800 px-1 rounded">--network-mode=private</code> to allow private IPs in trusted networks.
+        </p>
+      </div>
+
+      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+          <Compass className="w-4 h-4 text-emerald-500" /> Available Services
+        </h4>
+        {data.services.length === 0 ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">No services configured yet. Add credentials and rules to define available hosts.</p>
+        ) : (
+          <div className="space-y-2">
+            {data.services.map((s, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                <div>
+                  <span className="font-mono text-sm text-slate-900 dark:text-white">{s.host}</span>
+                  {s.description && <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">{s.description}</span>}
+                </div>
+                <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400">allowed</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+          <KeyIcon className="w-4 h-4 text-emerald-500" /> Available Credential Keys
+        </h4>
+        {data.available_credential_keys.length === 0 ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">No credentials stored yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {data.available_credential_keys.map((k, i) => (
+              <span key={i} className="px-2 py-1 text-xs font-mono rounded bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-400">{k}</span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+          <Server className="w-4 h-4 text-emerald-500" /> Agent Connection
+        </h4>
+        <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400 font-mono">
+          <p><span className="text-slate-400">HTTPS_PROXY</span>=http://127.0.0.1:8080</p>
+          <p><span className="text-slate-400">X-Vault-ID</span>: &lt;your-vault-id&gt;</p>
+          <p className="text-slate-500 dark:text-slate-500 pt-1">Or use the explicit proxy endpoint:</p>
+          <p>GET http://127.0.0.1:8081/proxy/&#123;target_host&#125;/&#123;path&#125;</p>
+        </div>
+      </div>
     </div>
   )
 }

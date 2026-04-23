@@ -62,11 +62,10 @@ func New(mode Mode) *Guard {
 }
 
 func (g *Guard) Allowed(host string) (bool, string) {
-	h := host
-	if strings.Contains(h, ":") {
-		h, _, err := net.SplitHostPort(h)
+	if strings.Contains(host, ":") {
+		splitHost, _, err := net.SplitHostPort(host)
 		if err == nil {
-			host = h
+			host = splitHost
 		}
 	}
 
@@ -101,19 +100,19 @@ func (g *Guard) Allowed(host string) (bool, string) {
 }
 
 func (g *Guard) ResolveAndCheck(host string) (net.IP, bool, string) {
-	h := host
-	if strings.Contains(h, ":") {
-		h, _, err := net.SplitHostPort(h)
-		if err != nil {
-			h = host
+	resolvedHost := host
+	if strings.Contains(resolvedHost, ":") {
+		splitHost, _, err := net.SplitHostPort(resolvedHost)
+		if err == nil {
+			resolvedHost = splitHost
 		}
 	}
 
-	ip := net.ParseIP(h)
+	ip := net.ParseIP(resolvedHost)
 	if ip == nil {
-		ips, err := net.LookupIP(h)
+		ips, err := net.LookupIP(resolvedHost)
 		if err != nil || len(ips) == 0 {
-			return nil, false, "DNS resolution failed: " + h
+			return nil, false, "DNS resolution failed: " + resolvedHost
 		}
 		ip = ips[0]
 	}

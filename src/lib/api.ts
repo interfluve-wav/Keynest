@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Vault, VaultData, ImportedKey, Settings, ProxyCredential, ProxyRule, ProxyBinding, AuditEntry, ProxyStatus } from './types';
+import type { Vault, VaultData, ImportedKey, Settings, ProxyCredential, ProxyRule, ProxyBinding, AuditEntry, ProxyStatus, DiscoverResponse } from './types';
 
 // Vault management
 export const vaultList = (): Promise<Vault[]> => invoke('vault_list');
@@ -151,3 +151,5 @@ export const proxyDeleteBinding = (id: string, mgmtPort?: number): Promise<void>
   invoke('proxy_delete_binding', { id, mgmtPort });
 export const proxyAuditLog = (limit?: number, offset?: number, mgmtPort?: number): Promise<AuditEntry[]> =>
   invoke('proxy_audit_log', { limit, offset, mgmtPort });
+export const proxyDiscover = (mgmtPort?: number, vaultId?: string): Promise<DiscoverResponse> =>
+  invoke('proxy_discover', { mgmtPort, vaultId });

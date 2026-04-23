@@ -214,6 +214,8 @@ Deleting from app:
 | AI agent credential exfiltration | Agent Chest brokered access — keys never leave the proxy |
 | Agent accessing unauthorized APIs | Firewall rules deny by host/path/method |
 | Agent blast radius | Multi-vault RBAC scopes credentials per vault |
+| SSRF attacks | Network guard blocks private IPs, loopback, and cloud metadata endpoints |
+| DNS rebinding | Proxy resolves hostname, validates IP, then connects directly |
 
 ### Not Addressed
 - Physical access to unlocked machine
@@ -258,6 +260,8 @@ Deleting from app:
 | `biometric_delete_key` | biometric | Delete biometric key |
 | `proxy_start` | proxy | Start Agent Chest proxy |
 | `proxy_stop` | proxy | Stop Agent Chest proxy |
+| `proxy_status` | proxy | Check proxy status |
+| `proxy_discover` | proxy | Discover available services and credential keys |
 | `proxy_status` | proxy | Check proxy status |
 | `proxy_list_credentials` | proxy | List proxy credentials |
 | `proxy_add_credential` | proxy | Add proxy credential |

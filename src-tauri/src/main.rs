@@ -94,6 +94,7 @@ fn main() {
             keynest_tauri_lib::proxy::proxy_add_binding,
             keynest_tauri_lib::proxy::proxy_delete_binding,
             keynest_tauri_lib::proxy::proxy_audit_log,
+            keynest_tauri_lib::proxy::proxy_discover,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

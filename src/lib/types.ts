@@ -135,6 +135,17 @@ export interface ProxyStatus {
   mgmt_port: number
 }
 
+export interface DiscoverService {
+  host: string
+  description: string
+}
+
+export interface DiscoverResponse {
+  vault: string
+  services: DiscoverService[]
+  available_credential_keys: string[]
+}
+
 export function emptyVaultData(): VaultData {
   return { keys: [], api_keys: [], notes: [], pgp_keys: [] }
 }

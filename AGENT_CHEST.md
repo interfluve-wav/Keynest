@@ -67,7 +67,7 @@ The proxy compiles to a single Go binary. Available as a Docker container. No ex
 │  │  Rust Backend (proxy.rs)                                    │ │
 │  │  ├── Spawns agent-chest-proxy binary                        │ │
 │  │  ├── Bridges management API (localhost:8081)               │ │
-│  │  └── 13 Tauri commands: start, stop, status, CRUD, audit  │ │
+│  │  └── 14 Tauri commands: start, stop, status, CRUD, audit, discover │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────┘
 
@@ -77,13 +77,17 @@ The proxy compiles to a single Go binary. Available as a Docker container. No ex
 │  │  Proxy Server │  │  Mgmt API    │  │  Audit Logger       │   │
 │  │  :8080        │  │  :8081       │  │  (file + memory)    │   │
 │  │  ┌──────────┐ │  │  ┌────────┐  │  └────────────────────┘   │
-│  │  │ HTTP     │ │  │  │ CRUD   │  │                            │
-│  │  │ CONNECT │ │  │  │ Rules  │  │  ┌────────────────────┐   │
-│  │  │ Forward  │ │  │  │ RBAC   │  │  │  In-Memory Stores  │   │
-│  │  └──────────┘ │  │  │ Audit  │  │  │  · Credentials     │   │
-│  └──────────────┘  │  └────────┘  │  │  · Rules           │   │
-│                     │  /api/v1/*    │  │  · Bindings        │   │
-│                     └──────────────┘  └────────────────────┘   │
+│  │  │ HTTP     │ │  │  │ CRUD   │  │  ┌────────────────────┐   │
+│  │  │ CONNECT │ │  │  │ Rules  │  │  │  Network Guard     │   │
+│  │  │ Forward  │ │  │  │ RBAC   │  │  │  · Block private IPs│   │
+│  │  └──────────┘ │  │  │ Audit  │  │  │  · Block metadata  │   │
+│  │  ┌──────────┐ │  │  │Discover│  │  └────────────────────┘   │
+│  │  │ /proxy/* │ │  │  └────────┘  │  ┌────────────────────┐   │
+│  │  └──────────┘ │  │  /api/v1/*    │  │  In-Memory Stores  │   │
+│  └──────────────┘  └──────────────┘  │  · Credentials     │   │
+│                                       │  · Rules           │   │
+│                                       │  · Bindings        │   │
+│                                       └────────────────────┘   │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -130,6 +134,34 @@ The management API runs on port 8081 by default.
 GET /api/v1/status
 → {"status":"running","audit_entries":42}
 ```
+
+### Discover
+
+Returns available services and credential keys for agents to learn what they can access.
+
+```
+GET /api/v1/discover?vault_id=<vault-id>
+→ {
+    "vault": "vault-uuid",
+    "services": [
+      {"host": "api.openai.com", "description": "OpenAI API"},
+      {"host": "*.github.com", "description": "GitHub API"}
+    ],
+    "available_credential_keys": ["OPENAI_KEY", "GITHUB_TOKEN"]
+  }
+```
+
+### Explicit Proxy Endpoint
+
+For clients that can't use `HTTPS_PROXY`, requests can be made through the management API:
+
+```
+GET  http://127.0.0.1:8081/proxy/api.openai.com/v1/chat/completions
+Authorization: Bearer <session-token>
+X-Vault-ID: <vault-id>
+```
+
+The proxy matches the target host against credentials, injects auth, and forwards over HTTPS. Returns 403 with a `proposal_hint` if the host is not allowed.
 
 ### Credentials
 
@@ -298,10 +330,42 @@ docker run -p 8080:8080 -p 8081:8081 \
 | `bearer` | Request host matches `target_host` | Injects `Authorization: Bearer <header_value>` |
 | `api_key_header` | Request host matches `target_host` | Injects `<header_name>: <header_value>` (e.g., `steel-api-key: xxx`) |
 | `basic_auth` | Request host matches `target_host` | Injects `Authorization: Basic <header_value>` |
+| `passthrough` | Request host matches `target_host` | No credential injection — client's headers flow through unchanged |
 
 For HTTPS (CONNECT) requests where a matching credential exists, the proxy upgrades the connection to a forward-proxy request — it makes the TLS request itself with injected headers and relays the response back, ensuring credentials are injected even over HTTPS.
 
 For HTTPS requests with no matching credential, the proxy tunnels the connection transparently (standard CONNECT behavior).
+
+## Network Guard (SSRF Prevention)
+
+Agent Chest includes a network guard that validates every outbound proxy connection at the IP level, preventing agents from using the proxy to reach internal infrastructure.
+
+### Modes
+
+| Mode | Behavior |
+|------|----------|
+| `public` (default) | Blocks private/reserved IPs and cloud metadata endpoints |
+| `private` | Blocks only cloud metadata endpoints (for trusted networks) |
+
+Set via `--network-mode=private` CLI flag.
+
+### Always blocked (both modes)
+
+- `169.254.169.254/32` — AWS/GCP/Azure instance metadata
+- `fd00:ec2::254/128` — AWS IMDSv2 IPv6
+
+### Blocked in public mode
+
+- `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` — RFC1918 private
+- `127.0.0.0/8`, `::1/128` — loopback
+- `169.254.0.0/16`, `fe80::/10` — link-local
+- `fc00::/7` — IPv6 unique local
+- `100.64.0.0/10` — carrier-grade NAT
+- `0.0.0.0/32` — unspecified
+
+### DNS rebinding protection
+
+The guard resolves hostnames, validates the IP against the block list, then connects. This prevents DNS rebinding where a hostname resolves to a safe IP during validation but a different (internal) IP during connection.
 
 ## Security Considerations
 
@@ -311,3 +375,4 @@ For HTTPS requests with no matching credential, the proxy tunnels the connection
 - **Audit logs** can be written to disk for forensics and compliance.
 - **Host pattern matching** prevents agents from reaching unintended endpoints.
 - **Method filtering** restricts agents to safe HTTP methods (e.g., GET/POST only, no DELETE).
+- **Network guard** blocks SSRF attacks — agents cannot reach private IPs, loopback, or cloud metadata endpoints through the proxy.
