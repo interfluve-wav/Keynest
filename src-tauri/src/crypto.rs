@@ -255,7 +255,6 @@ mod tests {
     use super::*;
 
     const TEST_PASSWORD: &str = "correct-horse-battery-staple";
-    const TEST_SALT: &str = "e4pXrC!x3XqA8t9gZ9vX1g=="; // 16 bytes base64 — we'll test with proper salts
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {

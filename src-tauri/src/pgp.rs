@@ -37,6 +37,7 @@ type GpgRecord<'a> = (
     Vec<&'a str>, // user_ids
 );
 
+#[allow(dead_code)]
 fn parse_gpg_record(line: &str) -> Option<GpgRecord<'_>> {
     let fields: Vec<&str> = line.split(':').collect();
     if fields.len() < 10 {
