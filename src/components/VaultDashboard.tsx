@@ -68,6 +68,7 @@ export function VaultDashboard({ onOpenSettings }: { onOpenSettings?: () => void
   const [activeTab, setActiveTab] = useState<'ssh' | 'api' | 'pgp'>('ssh')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showImportApiModal, setShowImportApiModal] = useState(false)
   const [showImportPgpModal, setShowImportPgpModal] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set())
@@ -298,6 +299,21 @@ export function VaultDashboard({ onOpenSettings }: { onOpenSettings?: () => void
     toast(`Imported ${keys.length} key${keys.length > 1 ? 's' : ''}`, 'success')
   }
 
+  const handleImportApiKeys = async (keys: Array<{ name: string; provider: string; key: string; notes: string }>) => {
+    const newApiKeys: ApiKey[] = keys.map(k => ({
+      id: crypto.randomUUID(),
+      name: k.name,
+      provider: k.provider,
+      key: k.key,
+      notes: k.notes,
+      created: new Date().toISOString(),
+      pinned: false,
+    }))
+    await saveData({ ...vaultData, api_keys: [...vaultData.api_keys, ...newApiKeys] })
+    setShowImportApiModal(false)
+    toast(`Imported ${keys.length} API key${keys.length > 1 ? 's' : ''}`, 'success')
+  }
+
   const exportVault = () => {
     const data = JSON.stringify(vaultData, null, 2)
     const blob = new Blob([data], { type: 'application/json' })
@@ -429,6 +445,15 @@ export function VaultDashboard({ onOpenSettings }: { onOpenSettings?: () => void
               Import
             </button>
           )}
+          {activeTab === 'api' && (
+            <button
+              onClick={() => setShowImportApiModal(true)}
+              className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium rounded-lg transition-all dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50"
+            >
+              <Upload className="w-4 h-4" />
+              Import API
+            </button>
+          )}
           {activeTab === 'pgp' && (
             <button
               onClick={() => setShowImportPgpModal(true)}
@@ -530,6 +555,12 @@ export function VaultDashboard({ onOpenSettings }: { onOpenSettings?: () => void
         <ImportKeysModal
           onClose={() => setShowImportModal(false)}
           onImport={handleImportKeys}
+        />
+      )}
+      {showImportApiModal && (
+        <ImportApiModal
+          onClose={() => setShowImportApiModal(false)}
+          onImport={handleImportApiKeys}
         />
       )}
       {showImportPgpModal && (
@@ -1073,6 +1104,141 @@ const PgpKeyRow = memo(function PgpKeyRow({
     </div>
   )
 })
+
+// ── Import API Keys Modal ─────────────────────────────────────────────────────────
+
+function ImportApiModal({
+  onClose, onImport
+}: {
+  onClose: () => void
+  onImport: (keys: Array<{ name: string; provider: string; key: string; notes: string }>) => void
+}) {
+  const [jsonInput, setJsonInput] = useState('')
+  const [isImporting, setIsImporting] = useState(false)
+  const [error, setError] = useState('')
+  const [preview, setPreview] = useState<Array<{ name: string; provider: string; key: string; notes: string }>>([])
+
+  const handleParse = () => {
+    setError('')
+    setPreview([])
+    try {
+      const parsed = JSON.parse(jsonInput)
+      if (!Array.isArray(parsed)) {
+        throw new Error('Input must be a JSON array')
+      }
+      const validated = parsed.map((item, idx) => {
+        if (!item.name || !item.provider || !item.key) {
+          throw new Error(`Item ${idx + 1}: missing required field (name, provider, key)`)
+        }
+        return {
+          name: String(item.name),
+          provider: String(item.provider),
+          key: String(item.key),
+          notes: item.notes ? String(item.notes) : '',
+        }
+      })
+      setPreview(validated)
+      toast(`Parsed ${validated.length} API key(s)`, 'info')
+    } catch (err: any) {
+      setError(err?.toString() || 'Invalid JSON format')
+    }
+  }
+
+  const handleImport = async () => {
+    if (preview.length === 0) return
+    setIsImporting(true)
+    try {
+      for (const key of preview) {
+        onImport([key])
+      }
+      onClose()
+    } catch (err: any) {
+      setError(err?.toString() || 'Import failed')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn" onClick={onClose}>
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-lg shadow-2xl dark:bg-slate-900 dark:border-slate-800" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">Import API Keys</h2>
+          <button onClick={onClose} className="text-2xl text-slate-400 hover:text-slate-600 dark:hover:text-white">×</button>
+        </div>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+          Paste a JSON array of API keys below. Each key must have <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded text-xs">name</code>, <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded text-xs">provider</code>, and <code className="px-1 bg-slate-100 dark:bg-slate-800 rounded text-xs">key</code> fields.
+        </p>
+        <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400">
+          <p className="font-medium mb-1">Format example:</p>
+          <pre className="overflow-x-auto whitespace-pre-wrap">
+{`[
+  {
+    "name": "OpenAI API",
+    "provider": "OpenAI",
+    "key": "sk-1234567890",
+    "notes": "For ChatGPT"
+  }
+]`}
+          </pre>
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1.5">JSON Data</label>
+          <textarea
+            value={jsonInput}
+            onChange={(e) => setJsonInput(e.target.value)}
+            placeholder='[{"name":"My API","provider":"Provider","key":"api-key-here"}]'
+            rows={8}
+            className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500/50 transition-all font-mono text-xs resize-none dark:bg-slate-950 dark:border-slate-700 dark:text-white dark:placeholder-slate-500"
+          />
+        </div>
+        {error && (
+          <div className="mb-4 flex items-center gap-2 text-red-600 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 dark:text-red-400">
+            <Shield className="w-4 h-4 flex-shrink-0" />
+            {error}
+          </div>
+        )}
+        {preview.length > 0 && (
+          <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+            <p className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">
+              Ready to import {preview.length} API key(s):
+            </p>
+            <ul className="mt-2 space-y-1 text-xs text-slate-700 dark:text-slate-300">
+              {preview.map((k, i) => (
+                <li key={i}>• {k.name} ({k.provider})</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 rounded-lg transition-colors dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleParse}
+            disabled={!jsonInput.trim()}
+            className="flex-1 px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-900 font-medium rounded-lg transition-colors disabled:opacity-50 dark:bg-slate-700 dark:hover:bg-slate-600 dark:text-white"
+          >
+            Parse
+          </button>
+          <button
+            type="button"
+            onClick={handleImport}
+            disabled={preview.length === 0 || isImporting}
+            className="flex-1 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 text-slate-950 font-semibold rounded-lg transition-all"
+          >
+            {isImporting ? 'Importing...' : 'Import'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ── Import PGP Modal ──────────────────────────────────────────────────────────
 
