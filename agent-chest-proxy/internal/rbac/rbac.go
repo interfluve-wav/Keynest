@@ -82,3 +82,28 @@ func (m *Manager) IsCredentialBoundToVault(credentialID, vaultID string) bool {
 	}
 	return false
 }
+
+func (m *Manager) AddRuleToVaultBindings(vaultID, ruleID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, b := range m.bindings {
+		if b.VaultID != vaultID {
+			continue
+		}
+
+		exists := false
+		for _, rid := range b.RuleIDs {
+			if rid == ruleID {
+				exists = true
+				break
+			}
+		}
+		if exists {
+			continue
+		}
+
+		b.RuleIDs = append(b.RuleIDs, ruleID)
+		m.bindings[id] = b
+	}
+}

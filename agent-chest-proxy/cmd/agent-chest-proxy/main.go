@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -26,13 +27,30 @@ type AppConfig struct {
 	Bindings    []rbac.Binding     `json:"bindings"`
 }
 
+func defaultStatePath(fileName string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".agent-chest", fileName)
+}
+
 func main() {
 	proxyPort := flag.Int("proxy-port", 8080, "Port for the HTTPS proxy server")
 	mgmtPort := flag.Int("mgmt-port", 8081, "Port for the management API")
 	configPath := flag.String("config", "", "Path to config file")
 	auditPath := flag.String("audit-log", "", "Path to audit log file")
+	agentsStatePath := flag.String("agents-state", "", "Path to persisted agents/invites state")
+	proposalsStatePath := flag.String("proposals-state", "", "Path to persisted proposals state")
 	netMode := flag.String("network-mode", "public", "Network guard mode: public (blocks private IPs) or private (blocks only metadata)")
 	flag.Parse()
+
+	if *agentsStatePath == "" {
+		*agentsStatePath = defaultStatePath("agents.json")
+	}
+	if *proposalsStatePath == "" {
+		*proposalsStatePath = defaultStatePath("proposals.json")
+	}
 
 	vaultStore := vault.NewMemoryStore()
 	ruleEngine := rules.NewEngine()
@@ -69,7 +87,7 @@ func main() {
 			len(cfg.Credentials), len(cfg.Rules), len(cfg.Bindings))
 	}
 
-	p := proxy.New(vaultStore, ruleEngine, rbacMgr, auditLogger, guard)
+	p := proxy.NewWithState(vaultStore, ruleEngine, rbacMgr, auditLogger, guard, *proposalsStatePath, *agentsStatePath)
 
 	proxySrv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *proxyPort),

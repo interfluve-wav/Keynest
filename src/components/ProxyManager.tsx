@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Shield, Play, Square, Plus, Trash2, RefreshCw,
-  Server, Lock, Eye, EyeOff,
+  Server, Lock, Eye, EyeOff, Check, XCircle,
   FileText, Key as KeyIcon, Filter, Link, Compass
 } from 'lucide-react'
 import { useVaultStore } from '../lib/store'
@@ -10,17 +10,25 @@ import {
   proxyListCredentials, proxyAddCredential, proxyDeleteCredential,
   proxyListRules, proxyAddRule, proxyDeleteRule,
   proxyListBindings, proxyAddBinding, proxyDeleteBinding,
-  proxyAuditLog, proxyDiscover
+  proxyAuditLog, proxyDiscover, proxyListProposals, proxyApproveProposal, proxyDenyProposal,
+  proxyListAgents, proxyRotateAgentToken, proxyRevokeAgent, proxyListInvites, proxyCreateInvite, proxyRedeemInvite
 } from '../lib/api'
-import type { ProxyCredential, ProxyRule, ProxyBinding, AuditEntry, DiscoverService } from '../lib/types'
+import type { ProxyCredential, ProxyRule, ProxyBinding, ProxyProposal, ProxyAgent, ProxyInvite, ProxyRedeemInviteResponse, AuditEntry, DiscoverService } from '../lib/types'
 import { ErrorBoundary } from './ErrorBoundary'
+import { toast } from './VaultDashboard'
 
-type ProxyTab = 'discover' | 'credentials' | 'rules' | 'bindings' | 'audit'
+type ProxyTab = 'discover' | 'credentials' | 'rules' | 'bindings' | 'proposals' | 'agents' | 'audit'
+
+function formatError(err: unknown): string {
+  if (typeof err === 'string') return err
+  if (err && typeof err === 'object' && 'toString' in err) return String(err)
+  return 'Unexpected error'
+}
 
 export function ProxyManager() {
   const {
-    proxyStatus, proxyCredentials, proxyRules, proxyBindings, proxyAuditLog: proxyAuditEntries,
-    setProxyStatus, setProxyCredentials, setProxyRules, setProxyBindings, setProxyAuditLog: setProxyAuditEntries,
+    proxyStatus, proxyCredentials, proxyRules, proxyBindings, proxyProposals, proxyAgents, proxyInvites, proxyAuditLog: proxyAuditEntries,
+    setProxyStatus, setProxyCredentials, setProxyRules, setProxyBindings, setProxyProposals, setProxyAgents, setProxyInvites, setProxyAuditLog: setProxyAuditEntries,
     currentVault
   } = useVaultStore()
 
@@ -41,6 +49,12 @@ export function ProxyManager() {
       setProxyRules(rules)
       const bindings = await proxyListBindings().catch(() => [])
       setProxyBindings(bindings)
+      const proposals = await proxyListProposals(undefined, currentVault?.id).catch(() => [])
+      setProxyProposals(proposals)
+      const agents = await proxyListAgents(undefined, currentVault?.id).catch(() => [])
+      setProxyAgents(agents)
+      const invites = await proxyListInvites(undefined, currentVault?.id).catch(() => [])
+      setProxyInvites(invites)
       const audit = await proxyAuditLog(50).catch(() => [])
       setProxyAuditEntries(audit)
       const disco = await proxyDiscover(undefined, currentVault?.id).catch(() => null)
@@ -48,7 +62,7 @@ export function ProxyManager() {
         setDiscoverData({ services: disco.services, available_credential_keys: disco.available_credential_keys })
       }
     }
-  }, [setProxyStatus, setProxyCredentials, setProxyRules, setProxyBindings, setProxyAuditEntries])
+  }, [currentVault?.id, setProxyStatus, setProxyCredentials, setProxyRules, setProxyBindings, setProxyProposals, setProxyAgents, setProxyInvites, setProxyAuditEntries])
 
   useEffect(() => { refreshAll() }, [refreshAll])
 
@@ -58,8 +72,10 @@ export function ProxyManager() {
       const status = await proxyStart(8080, 8081)
       setProxyStatus(status)
       await refreshAll()
+      toast('Proxy started', 'success')
     } catch (e: any) {
       console.error('Failed to start proxy:', e)
+      toast(`Failed to start proxy: ${formatError(e)}`, 'error')
     } finally {
       setLoading(false)
     }
@@ -73,9 +89,14 @@ export function ProxyManager() {
       setProxyCredentials([])
       setProxyRules([])
       setProxyBindings([])
+      setProxyProposals([])
+      setProxyAgents([])
+      setProxyInvites([])
       setProxyAuditEntries([])
+      toast('Proxy stopped', 'info')
     } catch (e: any) {
       console.error('Failed to stop proxy:', e)
+      toast(`Failed to stop proxy: ${formatError(e)}`, 'error')
     } finally {
       setLoading(false)
     }
@@ -137,7 +158,7 @@ export function ProxyManager() {
                 <div className="text-sm text-emerald-800 dark:text-emerald-200">
                   <p className="font-medium">Proxy Active</p>
                   <p className="mt-1 text-emerald-700 dark:text-emerald-300">
-                    Configure your agent to use <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded text-xs font-mono">HTTPS_PROXY=http://127.0.0.1:{proxyStatus.proxy_port}</code> and set <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded text-xs font-mono">X-Vault-ID: {currentVault?.id || '&lt;vault-id&gt;'}</code> header. Credentials are brokered at the proxy — agents never touch raw keys.
+                    Configure your agent with <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded text-xs font-mono">HTTPS_PROXY=http://127.0.0.1:{proxyStatus.proxy_port}</code>, <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded text-xs font-mono">X-Vault-ID: {currentVault?.id || '&lt;vault-id&gt;'}</code>, <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded text-xs font-mono">X-Agent-ID</code>, and <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded text-xs font-mono">X-Agent-Token</code>. Credentials are brokered at the proxy — agents never touch raw keys.
                   </p>
                 </div>
               </div>
@@ -148,6 +169,8 @@ export function ProxyManager() {
               <TabButton active={activeTab === 'credentials'} onClick={() => setActiveTab('credentials')} icon={<KeyIcon className="w-4 h-4" />} label={`Credentials (${proxyCredentials.length})`} />
               <TabButton active={activeTab === 'rules'} onClick={() => setActiveTab('rules')} icon={<Filter className="w-4 h-4" />} label={`Rules (${proxyRules.length})`} />
               <TabButton active={activeTab === 'bindings'} onClick={() => setActiveTab('bindings')} icon={<Link className="w-4 h-4" />} label={`RBAC (${proxyBindings.length})`} />
+              <TabButton active={activeTab === 'proposals'} onClick={() => setActiveTab('proposals')} icon={<Shield className="w-4 h-4" />} label={`Proposals (${proxyProposals.filter(p => p.status === 'pending').length})`} />
+              <TabButton active={activeTab === 'agents'} onClick={() => setActiveTab('agents')} icon={<Server className="w-4 h-4" />} label={`Agents (${proxyAgents.length})`} />
               <TabButton active={activeTab === 'audit'} onClick={() => setActiveTab('audit')} icon={<FileText className="w-4 h-4" />} label="Audit" />
               <div className="flex-1" />
               {activeTab === 'credentials' && (
@@ -173,9 +196,11 @@ export function ProxyManager() {
             </div>
 
             {activeTab === 'discover' && <DiscoverTab data={discoverData} onRefresh={refreshAll} />}
-            {activeTab === 'credentials' && <CredentialsList creds={proxyCredentials} onDelete={async (id) => { await proxyDeleteCredential(id); await refreshAll() }} />}
-            {activeTab === 'rules' && <RulesList rules={proxyRules} onDelete={async (id) => { await proxyDeleteRule(id); await refreshAll() }} />}
-            {activeTab === 'bindings' && <BindingsList bindings={proxyBindings} credentials={proxyCredentials} rules={proxyRules} onDelete={async (id) => { await proxyDeleteBinding(id); await refreshAll() }} />}
+            {activeTab === 'credentials' && <CredentialsList creds={proxyCredentials} onDelete={async (id) => { try { await proxyDeleteCredential(id); await refreshAll(); toast('Credential deleted', 'info') } catch (e) { toast(`Delete failed: ${formatError(e)}`, 'error') } }} />}
+            {activeTab === 'rules' && <RulesList rules={proxyRules} onDelete={async (id) => { try { await proxyDeleteRule(id); await refreshAll(); toast('Rule deleted', 'info') } catch (e) { toast(`Delete failed: ${formatError(e)}`, 'error') } }} />}
+            {activeTab === 'bindings' && <BindingsList bindings={proxyBindings} credentials={proxyCredentials} rules={proxyRules} onDelete={async (id) => { try { await proxyDeleteBinding(id); await refreshAll(); toast('Binding deleted', 'info') } catch (e) { toast(`Delete failed: ${formatError(e)}`, 'error') } }} />}
+            {activeTab === 'proposals' && <ProposalsList proposals={proxyProposals} onApprove={async (id) => { try { await proxyApproveProposal(id); await refreshAll(); toast('Proposal approved', 'success') } catch (e) { toast(`Approve failed: ${formatError(e)}`, 'error') } }} onDeny={async (id) => { try { await proxyDenyProposal(id); await refreshAll(); toast('Proposal denied', 'info') } catch (e) { toast(`Deny failed: ${formatError(e)}`, 'error') } }} />}
+            {activeTab === 'agents' && currentVault && <AgentsList proxyPort={proxyStatus.proxy_port} vaultId={currentVault.id} agents={proxyAgents} invites={proxyInvites} onCreateInvite={async (name) => { try { const invite = await proxyCreateInvite(currentVault.id, name); await refreshAll(); toast('Invite created', 'success'); return invite } catch (e) { toast(`Invite failed: ${formatError(e)}`, 'error'); throw e } }} onRedeem={async (code, name) => { try { const redeemed = await proxyRedeemInvite(code, name); await refreshAll(); toast('Invite redeemed', 'success'); return redeemed } catch (e) { toast(`Redeem failed: ${formatError(e)}`, 'error'); throw e } }} onRotate={async (id) => { try { const rotated = await proxyRotateAgentToken(id); await refreshAll(); toast('Token rotated', 'success'); return rotated } catch (e) { toast(`Rotate failed: ${formatError(e)}`, 'error'); throw e } }} onRevoke={async (id) => { try { await proxyRevokeAgent(id); await refreshAll(); toast('Agent revoked', 'info') } catch (e) { toast(`Revoke failed: ${formatError(e)}`, 'error') } }} />}
             {activeTab === 'audit' && <AuditLog entries={proxyAuditEntries} />}
           </>
         )}
@@ -193,9 +218,14 @@ export function ProxyManager() {
             vaultId={currentVault.id}
             onClose={() => setShowAddCred(false)}
             onSaved={async (cred) => {
-              await proxyAddCredential(cred)
-              setShowAddCred(false)
-              await refreshAll()
+              try {
+                await proxyAddCredential(cred)
+                setShowAddCred(false)
+                await refreshAll()
+                toast('Credential added', 'success')
+              } catch (e) {
+                toast(`Add credential failed: ${formatError(e)}`, 'error')
+              }
             }}
           />
         )}
@@ -204,9 +234,14 @@ export function ProxyManager() {
             vaultId={currentVault.id}
             onClose={() => setShowAddRule(false)}
             onSaved={async (rule) => {
-              await proxyAddRule(rule)
-              setShowAddRule(false)
-              await refreshAll()
+              try {
+                await proxyAddRule(rule)
+                setShowAddRule(false)
+                await refreshAll()
+                toast('Rule added', 'success')
+              } catch (e) {
+                toast(`Add rule failed: ${formatError(e)}`, 'error')
+              }
             }}
           />
         )}
@@ -217,9 +252,14 @@ export function ProxyManager() {
             rules={proxyRules}
             onClose={() => setShowAddBinding(false)}
             onSaved={async (vaultId, credIds, ruleIds) => {
-              await proxyAddBinding(vaultId, credIds, ruleIds)
-              setShowAddBinding(false)
-              await refreshAll()
+              try {
+                await proxyAddBinding(vaultId, credIds, ruleIds)
+                setShowAddBinding(false)
+                await refreshAll()
+                toast('Binding created', 'success')
+              } catch (e) {
+                toast(`Bind failed: ${formatError(e)}`, 'error')
+              }
             }}
           />
         )}
@@ -398,6 +438,375 @@ function BindingsList({ bindings, credentials, rules, onDelete }: {
   )
 }
 
+function ProposalsList({ proposals, onApprove, onDeny }: {
+  proposals: ProxyProposal[]
+  onApprove: (id: string) => void
+  onDeny: (id: string) => void
+}) {
+  if (proposals.length === 0) {
+    return (
+      <div className="text-center py-8 border-2 border-dashed border-slate-300 rounded-xl dark:border-slate-700">
+        <Shield className="w-8 h-8 mx-auto mb-3 text-slate-400 dark:text-slate-600" />
+        <p className="text-slate-600 dark:text-slate-500">No proposals yet</p>
+        <p className="text-sm text-slate-500 dark:text-slate-600 mt-1">Denied access requests can create proposals for one-click approval.</p>
+      </div>
+    )
+  }
+
+  const sorted = proposals.slice().sort((a, b) => {
+    if (a.status === 'pending' && b.status !== 'pending') return -1
+    if (a.status !== 'pending' && b.status === 'pending') return 1
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+
+  return (
+    <div className="space-y-3">
+      {sorted.map((p) => (
+        <div key={p.id} className="bg-white border border-slate-200 rounded-xl p-4 dark:bg-slate-900/50 dark:border-slate-800">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <h4 className="font-semibold text-slate-900 dark:text-white font-mono text-sm truncate">{p.host}{p.path !== '/' ? p.path : ''}</h4>
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                  p.status === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' :
+                  p.status === 'denied' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' :
+                  'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                }`}>{p.status}</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                <span className="font-mono">{p.method}</span> · vault <span className="font-mono">{p.vault_id || 'global'}</span>
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">{p.reason}</p>
+            </div>
+            {p.status === 'pending' && (
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => onApprove(p.id)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-sm font-medium transition-all">
+                  <Check className="w-4 h-4" /> Approve
+                </button>
+                <button onClick={() => onDeny(p.id)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-400 text-white text-sm font-medium transition-all">
+                  <XCircle className="w-4 h-4" /> Deny
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AgentsList({ proxyPort, vaultId, agents, invites, onCreateInvite, onRedeem, onRotate, onRevoke }: {
+  proxyPort: number
+  vaultId: string
+  agents: ProxyAgent[]
+  invites: ProxyInvite[]
+  onCreateInvite: (name: string) => Promise<ProxyInvite>
+  onRedeem: (code: string, name?: string) => Promise<ProxyRedeemInviteResponse>
+  onRotate: (id: string) => Promise<ProxyAgent>
+  onRevoke: (id: string) => Promise<void>
+}) {
+  const [inviteName, setInviteName] = useState('')
+  const [redeemCode, setRedeemCode] = useState('')
+  const [redeemName, setRedeemName] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [redeeming, setRedeeming] = useState(false)
+  const [issuedAgentId, setIssuedAgentId] = useState('')
+  const [issuedToken, setIssuedToken] = useState('')
+  const [copiedToken, setCopiedToken] = useState(false)
+  const [copiedSnippet, setCopiedSnippet] = useState(false)
+  const [toolPreset, setToolPreset] = useState<'claude_code' | 'hermes' | 'openclaw' | 'cursor'>('claude_code')
+
+  const buildConfigSnippet = (preset: 'claude_code' | 'hermes' | 'openclaw' | 'cursor') => {
+    if (!issuedToken || !issuedAgentId) return ''
+    const baseEnv = [
+      `HTTPS_PROXY=http://127.0.0.1:${proxyPort}`,
+      `X_VAULT_ID=${vaultId}`,
+      `X_AGENT_ID=${issuedAgentId}`,
+      `X_AGENT_TOKEN=${issuedToken}`,
+    ]
+    const headers = [
+      `X-Vault-ID: ${vaultId}`,
+      `X-Agent-ID: ${issuedAgentId}`,
+      `X-Agent-Token: ${issuedToken}`,
+    ]
+
+    switch (preset) {
+      case 'claude_code':
+        return [
+          '# Claude Code',
+          '# 1) Export env vars in your terminal',
+          ...baseEnv.map(v => `export ${v}`),
+          '',
+          '# 2) Start Claude Code from this shell',
+          'claude',
+          '',
+          '# Request headers to send:',
+          ...headers,
+        ].join('\n')
+      case 'hermes':
+        return [
+          '# Hermes',
+          '# 1) Add to your Hermes runtime env',
+          ...baseEnv,
+          '',
+          '# 2) Ensure Hermes forwards request headers:',
+          ...headers,
+        ].join('\n')
+      case 'openclaw':
+        return [
+          '# OpenClaw',
+          '# 1) Add env vars to OpenClaw launch config',
+          ...baseEnv,
+          '',
+          '# 2) Configure default request headers:',
+          ...headers,
+        ].join('\n')
+      case 'cursor':
+        return [
+          '# Cursor',
+          '# 1) Add env vars to Cursor terminal/session',
+          ...baseEnv.map(v => `export ${v}`),
+          '',
+          '# 2) Run your agent tooling from that terminal',
+          '',
+          '# Request headers to send:',
+          ...headers,
+        ].join('\n')
+      default:
+        return ''
+    }
+  }
+
+  const configSnippet = buildConfigSnippet(toolPreset)
+
+  const createInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!inviteName.trim()) return
+    setCreating(true)
+    try {
+      const invite = await onCreateInvite(inviteName.trim())
+      setRedeemCode(invite.code)
+      setInviteName('')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const redeemInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!redeemCode.trim()) return
+    setRedeeming(true)
+    try {
+      const redeemed = await onRedeem(redeemCode.trim(), redeemName.trim() || undefined)
+      setIssuedAgentId(redeemed.agent.id)
+      setIssuedToken(redeemed.token)
+      setRedeemCode('')
+      setRedeemName('')
+      setCopiedToken(false)
+      setCopiedSnippet(false)
+    } finally {
+      setRedeeming(false)
+    }
+  }
+
+  const copyToken = async () => {
+    if (!issuedToken) return
+    try {
+      await navigator.clipboard.writeText(issuedToken)
+      setCopiedToken(true)
+      window.setTimeout(() => setCopiedToken(false), 1500)
+      toast('Agent token copied', 'success')
+    } catch (err) {
+      console.error('Failed to copy token', err)
+      toast('Failed to copy token', 'error')
+    }
+  }
+
+  const copySnippet = async () => {
+    if (!configSnippet) return
+    try {
+      await navigator.clipboard.writeText(configSnippet)
+      setCopiedSnippet(true)
+      window.setTimeout(() => setCopiedSnippet(false), 1500)
+      toast('Config snippet copied', 'success')
+    } catch (err) {
+      console.error('Failed to copy snippet', err)
+      toast('Failed to copy snippet', 'error')
+    }
+  }
+
+  const downloadSnippet = () => {
+    if (!configSnippet || !issuedAgentId) return
+    const blob = new Blob([configSnippet], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `agent-config-${toolPreset}-${issuedAgentId}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast('Config snippet downloaded', 'success')
+  }
+
+  return (
+    <div className="space-y-4">
+      <form onSubmit={createInvite} className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Create Invite</h4>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={inviteName}
+            onChange={e => setInviteName(e.target.value)}
+            placeholder="Agent name (e.g. Codex Worker)"
+            className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500/50 transition-all dark:bg-slate-950 dark:border-slate-700 dark:text-white dark:placeholder-slate-500"
+          />
+          <button type="submit" disabled={!inviteName.trim() || creating} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-slate-950 font-medium rounded-lg transition-all">
+            {creating ? 'Creating...' : 'Create'}
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-500 font-mono">vault_id: {vaultId}</p>
+      </form>
+
+      <form onSubmit={redeemInvite} className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Redeem Invite</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <input
+            type="text"
+            value={redeemCode}
+            onChange={e => setRedeemCode(e.target.value)}
+            placeholder="Invite code"
+            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500/50 transition-all font-mono text-sm dark:bg-slate-950 dark:border-slate-700 dark:text-white dark:placeholder-slate-500"
+          />
+          <input
+            type="text"
+            value={redeemName}
+            onChange={e => setRedeemName(e.target.value)}
+            placeholder="Agent name (optional)"
+            className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:outline-none focus:border-emerald-500/50 transition-all dark:bg-slate-950 dark:border-slate-700 dark:text-white dark:placeholder-slate-500"
+          />
+        </div>
+        <div className="mt-2 flex justify-end">
+          <button type="submit" disabled={!redeemCode.trim() || redeeming} className="px-4 py-2 bg-blue-500 hover:bg-blue-400 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-medium rounded-lg transition-all">
+            {redeeming ? 'Redeeming...' : 'Redeem Invite'}
+          </button>
+        </div>
+      </form>
+
+      {issuedToken && (
+        <div className="bg-emerald-50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-800 p-4">
+          <h4 className="text-sm font-medium text-emerald-700 dark:text-emerald-300 mb-2">New Agent Token</h4>
+          <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80 mb-2">Shown only on redeem or rotate. Save it now.</p>
+          <p className="text-xs font-mono text-emerald-700 dark:text-emerald-300 mb-2 break-all">X-Agent-ID: {issuedAgentId}</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs font-mono bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-1.5 text-slate-900 dark:text-white break-all">
+              {issuedToken}
+            </code>
+            <button onClick={copyToken} type="button" className="px-3 py-1.5 text-xs rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-medium transition-all">
+              {copiedToken ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <div className="mt-3">
+            <p className="text-xs text-emerald-700/80 dark:text-emerald-400/80 mb-2">One-click agent setup snippet</p>
+            <div className="mb-2 flex flex-wrap gap-2">
+              {[
+                ['claude_code', 'Claude Code'],
+                ['hermes', 'Hermes'],
+                ['openclaw', 'OpenClaw'],
+                ['cursor', 'Cursor'],
+              ].map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setToolPreset(key as 'claude_code' | 'hermes' | 'openclaw' | 'cursor')}
+                  className={`px-2.5 py-1 text-xs rounded transition-all ${
+                    toolPreset === key
+                      ? 'bg-emerald-500 text-slate-950 font-medium'
+                      : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border border-emerald-200 dark:border-emerald-700'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <textarea
+              readOnly
+              value={configSnippet}
+              className="w-full min-h-[130px] text-xs font-mono bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-2 text-slate-900 dark:text-white"
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <button onClick={copySnippet} type="button" className="px-3 py-1.5 text-xs rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-medium transition-all">
+                {copiedSnippet ? 'Snippet Copied' : 'Copy Config Snippet'}
+              </button>
+              <button onClick={downloadSnippet} type="button" className="px-3 py-1.5 text-xs rounded bg-blue-500 hover:bg-blue-400 text-white font-medium transition-all">
+                Download Snippet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Invites</h4>
+        {invites.length === 0 ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">No invites yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {invites.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm text-slate-900 dark:text-white truncate">{inv.name}</p>
+                  <p className="text-xs font-mono text-slate-500 dark:text-slate-400">code: {inv.code}</p>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-mono ${
+                  inv.status === 'redeemed' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                }`}>{inv.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+        <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Agents</h4>
+        {agents.length === 0 ? (
+          <p className="text-sm text-slate-500 dark:text-slate-400">No agents yet. Redeem an invite to create one.</p>
+        ) : (
+          <div className="space-y-2">
+            {agents.map(agent => (
+              <div key={agent.id} className="flex items-center justify-between px-3 py-2 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm text-slate-900 dark:text-white truncate">{agent.name}</p>
+                  <p className="text-xs font-mono text-slate-500 dark:text-slate-400">{agent.id}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono ${
+                    agent.status === 'active' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                  }`}>{agent.status}</span>
+                  <button onClick={async () => {
+                    const rotated = await onRotate(agent.id)
+                    if (rotated.token) {
+                      setIssuedAgentId(agent.id)
+                      setIssuedToken(rotated.token)
+                      setCopiedToken(false)
+                      setCopiedSnippet(false)
+                    }
+                  }} disabled={agent.status !== 'active'} className="px-2.5 py-1 text-xs rounded bg-blue-500 hover:bg-blue-400 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white transition-all">
+                    Rotate Token
+                  </button>
+                  <button onClick={() => onRevoke(agent.id)} disabled={agent.status !== 'active'} className="px-2.5 py-1 text-xs rounded bg-red-500 hover:bg-red-400 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white transition-all">
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function DiscoverTab({ data, onRefresh }: { data: { services: DiscoverService[]; available_credential_keys: string[] } | null; onRefresh: () => void }) {
   if (!data) {
     return (
@@ -466,6 +875,8 @@ function DiscoverTab({ data, onRefresh }: { data: { services: DiscoverService[];
         <div className="space-y-2 text-xs text-slate-600 dark:text-slate-400 font-mono">
           <p><span className="text-slate-400">HTTPS_PROXY</span>=http://127.0.0.1:8080</p>
           <p><span className="text-slate-400">X-Vault-ID</span>: &lt;your-vault-id&gt;</p>
+          <p><span className="text-slate-400">X-Agent-ID</span>: &lt;agent-id&gt;</p>
+          <p><span className="text-slate-400">X-Agent-Token</span>: &lt;agent-token&gt;</p>
           <p className="text-slate-500 dark:text-slate-500 pt-1">Or use the explicit proxy endpoint:</p>
           <p>GET http://127.0.0.1:8081/proxy/&#123;target_host&#125;/&#123;path&#125;</p>
         </div>

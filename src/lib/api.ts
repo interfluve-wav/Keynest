@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Vault, VaultData, ImportedKey, Settings, ProxyCredential, ProxyRule, ProxyBinding, AuditEntry, ProxyStatus, DiscoverResponse } from './types';
+import type { Vault, VaultData, ImportedKey, Settings, ProxyCredential, ProxyRule, ProxyBinding, ProxyProposal, ProxyAgent, ProxyInvite, ProxyRedeemInviteResponse, AuditEntry, ProxyStatus, DiscoverResponse } from './types';
 
 // Vault management
 export const vaultList = (): Promise<Vault[]> => invoke('vault_list');
@@ -149,6 +149,26 @@ export const proxyAddBinding = (vaultId: string, credentialIds: string[], ruleId
   invoke('proxy_add_binding', { vaultId, credentialIds, ruleIds, mgmtPort });
 export const proxyDeleteBinding = (id: string, mgmtPort?: number): Promise<void> =>
   invoke('proxy_delete_binding', { id, mgmtPort });
+export const proxyListProposals = (mgmtPort?: number, vaultId?: string, status?: string): Promise<ProxyProposal[]> =>
+  invoke('proxy_list_proposals', { mgmtPort, vaultId, status });
+export const proxyCreateProposal = (proposal: ProxyProposal, mgmtPort?: number): Promise<ProxyProposal> =>
+  invoke('proxy_create_proposal', { mgmtPort, proposal });
+export const proxyApproveProposal = (id: string, mgmtPort?: number): Promise<ProxyProposal> =>
+  invoke('proxy_approve_proposal', { id, mgmtPort });
+export const proxyDenyProposal = (id: string, mgmtPort?: number): Promise<ProxyProposal> =>
+  invoke('proxy_deny_proposal', { id, mgmtPort });
+export const proxyListAgents = (mgmtPort?: number, vaultId?: string): Promise<ProxyAgent[]> =>
+  invoke('proxy_list_agents', { mgmtPort, vaultId });
+export const proxyRotateAgentToken = (id: string, mgmtPort?: number): Promise<ProxyAgent> =>
+  invoke('proxy_rotate_agent_token', { id, mgmtPort });
+export const proxyRevokeAgent = (id: string, mgmtPort?: number): Promise<ProxyAgent> =>
+  invoke('proxy_revoke_agent', { id, mgmtPort });
+export const proxyListInvites = (mgmtPort?: number, vaultId?: string): Promise<ProxyInvite[]> =>
+  invoke('proxy_list_invites', { mgmtPort, vaultId });
+export const proxyCreateInvite = (vaultId: string, name: string, mgmtPort?: number): Promise<ProxyInvite> =>
+  invoke('proxy_create_invite', { vaultId, name, mgmtPort });
+export const proxyRedeemInvite = (code: string, name?: string, mgmtPort?: number): Promise<ProxyRedeemInviteResponse> =>
+  invoke('proxy_redeem_invite', { code, name, mgmtPort });
 export const proxyAuditLog = (limit?: number, offset?: number, mgmtPort?: number): Promise<AuditEntry[]> =>
   invoke('proxy_audit_log', { limit, offset, mgmtPort });
 export const proxyDiscover = (mgmtPort?: number, vaultId?: string): Promise<DiscoverResponse> =>

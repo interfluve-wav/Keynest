@@ -68,7 +68,7 @@ npm run tauri build      # Build the Tauri app bundle
 - Biometric (Touch ID availability, store/retrieve/delete key, unlock)
 
 **Agent Chest proxy (Go binary + Rust bridge):**
-- `proxy.rs` — spawns Go binary, bridges management API via reqwest; 13 Tauri commands
+- `proxy.rs` — spawns Go binary, bridges management API via reqwest (credentials/rules/bindings/audit/discover/proposals/agents/invites)
 - `agent-chest-proxy/` — standalone Go HTTP/HTTPS credential proxy with management API
 
 **Components (`src/components/`):**
@@ -79,7 +79,7 @@ npm run tauri build      # Build the Tauri app bundle
 - `VaultDashboard.tsx` — main UI with tabs: SSH Keys, API Keys, Notes, PGP Keys, Proxy
 - `Settings.tsx` — auto-lock, theme, Touch ID clear, vault export/import
 - `QuickPicker.tsx` — global hotkey overlay
-- `ProxyManager.tsx` — Agent Chest proxy management (credentials, rules, bindings, audit) (`Cmd+Shift+K`) for fast key search/copy
+- `ProxyManager.tsx` — Agent Chest proxy management (discover, credentials, rules, bindings, proposals, agents/invites, audit) (`Cmd+Shift+K`) for fast key search/copy
 
 **Styling:** Tailwind CSS via `tailwind.config.js`; dark theme default.
 
@@ -96,7 +96,7 @@ npm run tauri build      # Build the Tauri app bundle
 - `git.rs` — Git integration: `git_is_repo`, `git_get_repo_config`, `git_set_ssh_key` (writes to `.git/config`), `git_remove_ssh_key`, `git_setup_deploy_key` (generates deploy key and configures repo)
 - `settings.rs` — `settings_get`/`set`/`reset` using Tauri's `store` plugin (persisted in app storage)
 - `biometric.rs` — Touch ID via `objc2-local-authentication`; stores encryption key in Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`, `biometric_available`, `biometric_store_key`, `biometric_retrieve_key`, `biometric_unlock` (full flow)
-- `proxy.rs` — Agent Chest proxy management; spawns Go binary, bridges management API via reqwest; 14 Tauri commands for credentials, rules, bindings, audit, discover
+- `proxy.rs` — Agent Chest proxy management; spawns Go binary, bridges management API via reqwest for credentials/rules/bindings/audit/discover/proposals/agents/invites
 
 **Data flow (unlock):**
 1. Frontend reads vault metadata (salt + ciphertext) via `vault_load`
@@ -116,6 +116,8 @@ Standalone Go binary that the Rust backend spawns as a child process. Provides:
 - Audit trail with file persistence and subscriber model
 - HTTPS CONNECT upgrade to forward-proxy when credentials match
 - Network guard (SSRF prevention): blocks private IPs, loopback, cloud metadata endpoints (169.254.169.254)
+- Explicit `/proxy/{host}/{path}` denials return JSON with `proposal_hint`; use this shape for blocked-host assertions
+- CONNECT denials may not surface an HTTP status in `curl` if the tunnel never establishes; verify those blocks through audit logs
 - DNS rebinding protection: resolves hostname, validates IP, then connects directly
 - `/v1/discover` endpoint: returns available services and credential keys for agents
 - `/proxy/{host}/{path}` explicit proxy endpoint for clients that can't use HTTPS_PROXY
@@ -221,6 +223,10 @@ npm run build
 - Run `python3 scripts/vault-diagnostic.py` to check integrity
 - Check `~/Library/Application Support/com.sshvault.desktop/` for `vaults.db`
 - Ensure `~/.ssh-vault/` directory exists and is writable
+
+**Agent Chest proxy blocks look odd in curl:**
+- Explicit `/proxy/{host}/{path}` network-guard denials return JSON with `proposal_hint`
+- CONNECT denials can show `curl` status `000`; confirm them in `/api/v1/audit`
 
 **Touch ID not working:**
 - Verify macOS System Settings → Touch ID is configured

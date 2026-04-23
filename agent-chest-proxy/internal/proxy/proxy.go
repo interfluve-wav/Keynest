@@ -10,40 +10,106 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/ssh-vault/agent-chest-proxy/internal/agents"
 	"github.com/ssh-vault/agent-chest-proxy/internal/audit"
 	"github.com/ssh-vault/agent-chest-proxy/internal/netguard"
+	"github.com/ssh-vault/agent-chest-proxy/internal/proposals"
 	"github.com/ssh-vault/agent-chest-proxy/internal/rbac"
 	"github.com/ssh-vault/agent-chest-proxy/internal/rules"
 	"github.com/ssh-vault/agent-chest-proxy/internal/vault"
 )
 
 type Proxy struct {
-	vaultStore vault.Store
-	ruleEngine *rules.Engine
-	rbacMgr    *rbac.Manager
-	auditLog   *audit.Logger
-	netGuard   *netguard.Guard
+	vaultStore  vault.Store
+	ruleEngine  *rules.Engine
+	rbacMgr     *rbac.Manager
+	proposalMgr *proposals.Manager
+	agentMgr    *agents.Manager
+	auditLog    *audit.Logger
+	netGuard    *netguard.Guard
 }
 
 func New(vaultStore vault.Store, ruleEngine *rules.Engine, rbacMgr *rbac.Manager, auditLog *audit.Logger, netGuard *netguard.Guard) *Proxy {
+	return NewWithState(vaultStore, ruleEngine, rbacMgr, auditLog, netGuard, "", "")
+}
+
+func NewWithState(vaultStore vault.Store, ruleEngine *rules.Engine, rbacMgr *rbac.Manager, auditLog *audit.Logger, netGuard *netguard.Guard, proposalStatePath, agentStatePath string) *Proxy {
+	proposalMgr := proposals.NewManager()
+	if proposalStatePath != "" {
+		proposalMgr = proposals.NewManagerWithFile(proposalStatePath)
+	}
+	agentMgr := agents.NewManager()
+	if agentStatePath != "" {
+		agentMgr = agents.NewManagerWithFile(agentStatePath)
+	}
 	return &Proxy{
-		vaultStore: vaultStore,
-		ruleEngine: ruleEngine,
-		rbacMgr:    rbacMgr,
-		auditLog:   auditLog,
-		netGuard:   netGuard,
+		vaultStore:  vaultStore,
+		ruleEngine:  ruleEngine,
+		rbacMgr:     rbacMgr,
+		proposalMgr: proposalMgr,
+		agentMgr:    agentMgr,
+		auditLog:    auditLog,
+		netGuard:    netGuard,
 	}
 }
 
 type DiscoverResponse struct {
-	Vault               string              `json:"vault"`
-	Services            []DiscoverService   `json:"services"`
-	AvailableCredentialKeys []string        `json:"available_credential_keys"`
+	Vault                   string            `json:"vault"`
+	Services                []DiscoverService `json:"services"`
+	AvailableCredentialKeys []string          `json:"available_credential_keys"`
 }
 
 type DiscoverService struct {
 	Host        string `json:"host"`
 	Description string `json:"description"`
+}
+
+func scrubControlHeaders(h http.Header) {
+	h.Del("X-Vault-ID")
+	h.Del("X-Agent-ID")
+	h.Del("X-Agent-Token")
+	h.Del("Proxy-Connection")
+	h.Del("Proxy-Authorization")
+}
+
+func (p *Proxy) denyAgentAuth(w http.ResponseWriter, status int, jsonBody bool, reason string, agentID, vaultID, method, target, path string, r *http.Request, start time.Time) {
+	p.auditLog.Log(audit.AuditEntry{
+		AgentID:    agentID,
+		VaultID:    vaultID,
+		Method:     method,
+		Target:     target,
+		Path:       path,
+		Action:     audit.ActionDeny,
+		StatusCode: status,
+		Rule:       reason,
+		SourceIP:   r.RemoteAddr,
+		UserAgent:  r.UserAgent(),
+		DurationMs: time.Since(start).Milliseconds(),
+	})
+	if jsonBody {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":  "unauthorized",
+			"reason": reason,
+		})
+		return
+	}
+	http.Error(w, "Unauthorized: "+reason, status)
+}
+
+func (p *Proxy) requireAgentAccess(w http.ResponseWriter, r *http.Request, start time.Time, agentID, vaultID, method, target, path string, jsonBody bool) bool {
+	token := strings.TrimSpace(r.Header.Get("X-Agent-Token"))
+	if agentID == "" || vaultID == "" || token == "" {
+		p.denyAgentAuth(w, http.StatusUnauthorized, jsonBody, "missing X-Agent-ID, X-Vault-ID, or X-Agent-Token", agentID, vaultID, method, target, path, r, start)
+		return false
+	}
+	if _, ok := p.agentMgr.Authenticate(agentID, vaultID, token); !ok {
+		p.denyAgentAuth(w, http.StatusUnauthorized, jsonBody, "invalid or revoked agent token", agentID, vaultID, method, target, path, r, start)
+		return false
+	}
+	return true
 }
 
 func (p *Proxy) ProxyHandler() http.Handler {
@@ -69,6 +135,9 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request, agentID, vaul
 	targetPath := r.URL.Path
 	if targetPath == "" {
 		targetPath = "/"
+	}
+	if !p.requireAgentAccess(w, r, start, agentID, vaultID, r.Method, targetHost, targetPath, false) {
+		return
 	}
 
 	allowed, reason := p.netGuard.Allowed(targetHost)
@@ -127,6 +196,7 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request, agentID, vaul
 
 	outReq := r.Clone(context.Background())
 	outReq.RequestURI = ""
+	scrubControlHeaders(outReq.Header)
 
 	if matchedCred != nil {
 		p.injectCredential(outReq, matchedCred)
@@ -187,6 +257,9 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request, agentID, v
 	port := r.URL.Port()
 	if port == "" {
 		port = "443"
+	}
+	if !p.requireAgentAccess(w, r, start, agentID, vaultID, "CONNECT", net.JoinHostPort(host, port), "/", false) {
+		return
 	}
 
 	allowed, reason := p.netGuard.Allowed(host)
@@ -257,7 +330,7 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request, agentID, v
 			}
 
 			for k, vv := range r.Header {
-				if k == "X-Vault-Id" || k == "X-Agent-Id" || k == "Proxy-Connection" || k == "Proxy-Authorization" {
+				if k == "X-Vault-Id" || k == "X-Agent-Id" || k == "X-Agent-Token" || k == "Proxy-Connection" || k == "Proxy-Authorization" {
 					continue
 				}
 				for _, v := range vv {
@@ -414,7 +487,7 @@ func (p *Proxy) ManagementHandler() http.Handler {
 	mux.HandleFunc("/api/v1/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":       "running",
+			"status":        "running",
 			"audit_entries": p.auditLog.Count(),
 		})
 	})
@@ -475,10 +548,202 @@ func (p *Proxy) ManagementHandler() http.Handler {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(DiscoverResponse{
-			Vault:                  vaultID,
-			Services:               services,
+			Vault:                   vaultID,
+			Services:                services,
 			AvailableCredentialKeys: keys,
 		})
+	})
+
+	mux.HandleFunc("/v1/proposals", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			vaultID := r.URL.Query().Get("vault_id")
+			status := proposals.Status(strings.ToLower(r.URL.Query().Get("status")))
+			items := p.proposalMgr.List(vaultID, status)
+			json.NewEncoder(w).Encode(items)
+		case http.MethodPost:
+			var req proposals.Proposal
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "invalid JSON", http.StatusBadRequest)
+				return
+			}
+			created := p.proposalMgr.Create(req)
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(created)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/v1/proposals/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/proposals/"), "/")
+		if len(parts) != 2 {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		id, action := parts[0], parts[1]
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		switch action {
+		case "approve":
+			items := p.proposalMgr.List("", "")
+			var target *proposals.Proposal
+			for i := range items {
+				if items[i].ID == id {
+					target = &items[i]
+					break
+				}
+			}
+			if target == nil {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+
+			ruleID := uuid.NewString()
+			pathMatch := target.Path
+			if pathMatch == "" {
+				pathMatch = "*"
+			}
+			method := strings.ToUpper(target.Method)
+			if method == "" {
+				method = "*"
+			}
+			createdRule := rules.Rule{
+				ID:        ruleID,
+				VaultID:   target.VaultID,
+				Name:      "Approved proposal: " + target.Host,
+				HostMatch: target.Host,
+				PathMatch: pathMatch,
+				Methods:   []string{method},
+				Action:    rules.Allow,
+				CreatedAt: time.Now().UTC().Format(time.RFC3339),
+			}
+			p.ruleEngine.Add(createdRule)
+			p.rbacMgr.AddRuleToVaultBindings(target.VaultID, createdRule.ID)
+
+			updated, ok := p.proposalMgr.Resolve(id, proposals.StatusApproved, createdRule.ID)
+			if !ok {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			json.NewEncoder(w).Encode(updated)
+		case "deny":
+			updated, ok := p.proposalMgr.Resolve(id, proposals.StatusDenied, "")
+			if !ok {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			json.NewEncoder(w).Encode(updated)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	})
+
+	mux.HandleFunc("/v1/invites", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case http.MethodGet:
+			vaultID := r.URL.Query().Get("vault_id")
+			json.NewEncoder(w).Encode(p.agentMgr.ListInvites(vaultID))
+		case http.MethodPost:
+			var req struct {
+				VaultID string `json:"vault_id"`
+				Name    string `json:"name"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				http.Error(w, "invalid JSON", http.StatusBadRequest)
+				return
+			}
+			invite := p.agentMgr.CreateInvite(req.VaultID, req.Name)
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(invite)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/v1/invites/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/invites/"), "/")
+		if len(parts) != 2 || parts[1] != "redeem" || r.Method != http.MethodPost {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		code := parts[0]
+		var req struct {
+			Name string `json:"name"`
+		}
+		if r.Body != nil {
+			_ = json.NewDecoder(r.Body).Decode(&req)
+		}
+		invite, agent, token, ok := p.agentMgr.RedeemInvite(code, req.Name)
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"invite": invite,
+			"agent": map[string]interface{}{
+				"id":         agent.ID,
+				"vault_id":   agent.VaultID,
+				"name":       agent.Name,
+				"status":     agent.Status,
+				"created_at": agent.CreatedAt,
+				"updated_at": agent.UpdatedAt,
+			},
+			"token": token,
+		})
+	})
+
+	mux.HandleFunc("/v1/agents", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		vaultID := r.URL.Query().Get("vault_id")
+		json.NewEncoder(w).Encode(p.agentMgr.ListAgents(vaultID))
+	})
+
+	mux.HandleFunc("/v1/agents/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/agents/"), "/")
+		if len(parts) != 2 || r.Method != http.MethodPost {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		id, action := parts[0], parts[1]
+		switch action {
+		case "rotate-token":
+			agent, token, ok := p.agentMgr.RotateToken(id)
+			if !ok {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"id":         agent.ID,
+				"vault_id":   agent.VaultID,
+				"name":       agent.Name,
+				"status":     agent.Status,
+				"token":      token,
+				"created_at": agent.CreatedAt,
+				"updated_at": agent.UpdatedAt,
+			})
+		case "revoke":
+			agent, ok := p.agentMgr.Revoke(id)
+			if !ok {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			json.NewEncoder(w).Encode(agent)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
 	})
 
 	mux.HandleFunc("/proxy/", func(w http.ResponseWriter, r *http.Request) {
@@ -504,6 +769,9 @@ func (p *Proxy) ManagementHandler() http.Handler {
 			http.Error(w, "missing target host", http.StatusBadRequest)
 			return
 		}
+		if !p.requireAgentAccess(w, r, start, agentID, vaultID, r.Method, targetHost, targetPath, true) {
+			return
+		}
 
 		allowed, reason := p.netGuard.Allowed(targetHost)
 		if !allowed {
@@ -520,7 +788,13 @@ func (p *Proxy) ManagementHandler() http.Handler {
 				UserAgent:  r.UserAgent(),
 				DurationMs: time.Since(start).Milliseconds(),
 			})
-			http.Error(w, "Forbidden: network policy: "+reason, http.StatusForbidden)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error":         "forbidden",
+				"reason":        "network policy: " + reason,
+				"proposal_hint": map[string]string{"host": targetHost, "endpoint": "/v1/proposals"},
+			})
 			return
 		}
 
@@ -539,12 +813,25 @@ func (p *Proxy) ManagementHandler() http.Handler {
 				UserAgent:  r.UserAgent(),
 				DurationMs: time.Since(start).Milliseconds(),
 			})
+			var proposalID string
+			if strings.Contains(decision.Reason, "no matching rules") {
+				created := p.proposalMgr.Create(proposals.Proposal{
+					VaultID: vaultID,
+					Host:    targetHost,
+					Path:    targetPath,
+					Method:  r.Method,
+					Reason:  decision.Reason,
+					AgentID: agentID,
+				})
+				proposalID = created.ID
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"error":         "forbidden",
 				"reason":        decision.Reason,
 				"proposal_hint": map[string]string{"host": targetHost, "endpoint": "/v1/proposals"},
+				"proposal_id":   proposalID,
 			})
 			return
 		}
@@ -568,7 +855,7 @@ func (p *Proxy) ManagementHandler() http.Handler {
 
 		for k, vv := range r.Header {
 			switch strings.ToLower(k) {
-			case "x-vault-id", "x-agent-id", "proxy-connection", "proxy-authorization", "authorization":
+			case "x-vault-id", "x-agent-id", "x-agent-token", "proxy-connection", "proxy-authorization", "authorization":
 				continue
 			}
 			for _, v := range vv {

@@ -28,7 +28,7 @@ With Agent Chest:
 ## Features
 
 ### Brokered Access via HTTPS_PROXY
-Agents configure `HTTPS_PROXY` and set `X-Vault-ID`. The proxy intercepts requests, matches the target host to stored credentials, injects auth headers, and forwards. Nothing to exfiltrate.
+Agents configure `HTTPS_PROXY` and send `X-Vault-ID`, `X-Agent-ID`, and `X-Agent-Token`. The proxy intercepts requests, validates agent identity and vault scope, matches the target host to stored credentials, injects auth headers, and forwards. Nothing to exfiltrate.
 
 ### Firewall-like Access Rules
 Define allow/deny rules by host pattern, path pattern, and HTTP method. Agents can only reach whitelisted endpoints.
@@ -67,7 +67,7 @@ The proxy compiles to a single Go binary. Available as a Docker container. No ex
 │  │  Rust Backend (proxy.rs)                                    │ │
 │  │  ├── Spawns agent-chest-proxy binary                        │ │
 │  │  ├── Bridges management API (localhost:8081)               │ │
-│  │  └── 14 Tauri commands: start, stop, status, CRUD, audit, discover │ │
+│  │  └── Tauri commands: start/stop/status, discover, CRUD, proposals, agents, invites, audit │ │
 │  └─────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────┘
 
@@ -119,10 +119,20 @@ Open the app, unlock a vault, click the **Proxy** tab, and hit **Start Proxy**. 
 ```bash
 export HTTPS_PROXY=http://127.0.0.1:8080
 export X_VAULT_ID=your-vault-id-here
+export X_AGENT_ID=agent-id-from-redeem
+export X_AGENT_TOKEN=agent-token-from-redeem
 
 # Agent makes normal requests — proxy handles auth
 curl https://api.openai.com/v1/chat/completions
 ```
+
+### 5. No-code onboarding (recommended)
+
+In the app Proxy tab:
+1. Create invite
+2. Redeem invite
+3. Copy/download the generated one-click snippet
+4. Use a preset: `Claude Code`, `Hermes`, `OpenClaw`, or `Cursor`
 
 ## Management API Reference
 
@@ -157,11 +167,40 @@ For clients that can't use `HTTPS_PROXY`, requests can be made through the manag
 
 ```
 GET  http://127.0.0.1:8081/proxy/api.openai.com/v1/chat/completions
-Authorization: Bearer <session-token>
 X-Vault-ID: <vault-id>
+X-Agent-ID: <agent-id>
+X-Agent-Token: <agent-token>
 ```
 
 The proxy matches the target host against credentials, injects auth, and forwards over HTTPS. Returns 403 with a `proposal_hint` if the host is not allowed.
+
+### Proposals
+
+```
+GET  /v1/proposals?vault_id=<vault-id>&status=pending
+POST /v1/proposals
+POST /v1/proposals/:id/approve
+POST /v1/proposals/:id/deny
+```
+
+When `/proxy/*` is denied due to missing allow rules, the proxy can create a proposal (`proposal_id`) for one-click approval.
+
+### Invites and Agents
+
+```
+GET  /v1/invites?vault_id=<vault-id>
+POST /v1/invites
+POST /v1/invites/:code/redeem
+
+GET  /v1/agents?vault_id=<vault-id>
+POST /v1/agents/:id/rotate-token
+POST /v1/agents/:id/revoke
+```
+
+Notes:
+- `redeem` and `rotate-token` return the one-time plaintext token.
+- `list agents` does not return plaintext tokens.
+- proxy data-plane requests require `X-Agent-ID` and `X-Agent-Token`.
 
 ### Credentials
 
@@ -369,7 +408,8 @@ The guard resolves hostnames, validates the IP against the block list, then conn
 
 ## Security Considerations
 
-- **Credentials are stored in-memory only** — the Go proxy process has no persistent storage. Credentials are loaded from config or via the management API at runtime.
+- **Credentials/rules/bindings are runtime-managed** — they are loaded from config or management API.
+- **Agents/invites/proposals are persisted** — state survives proxy restart.
 - **Management API has no auth** — bind to localhost only. In production, put an auth proxy in front.
 - **Vault encryption is AES-256-GCM** — the same encryption used for the main vault.
 - **Audit logs** can be written to disk for forensics and compliance.

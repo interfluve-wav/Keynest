@@ -95,6 +95,16 @@ fn main() {
             keynest_tauri_lib::proxy::proxy_delete_binding,
             keynest_tauri_lib::proxy::proxy_audit_log,
             keynest_tauri_lib::proxy::proxy_discover,
+            keynest_tauri_lib::proxy::proxy_list_proposals,
+            keynest_tauri_lib::proxy::proxy_create_proposal,
+            keynest_tauri_lib::proxy::proxy_approve_proposal,
+            keynest_tauri_lib::proxy::proxy_deny_proposal,
+            keynest_tauri_lib::proxy::proxy_list_agents,
+            keynest_tauri_lib::proxy::proxy_rotate_agent_token,
+            keynest_tauri_lib::proxy::proxy_revoke_agent,
+            keynest_tauri_lib::proxy::proxy_list_invites,
+            keynest_tauri_lib::proxy::proxy_create_invite,
+            keynest_tauri_lib::proxy::proxy_redeem_invite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

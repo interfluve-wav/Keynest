@@ -15,7 +15,7 @@ SSH Vault provides a secure, encrypted vault to store and manage:
 AI agents shouldn't hold raw API keys. Agent Chest runs a local HTTPS proxy that injects credentials into outbound requests, so agents never touch them.
 
 **How it works:**
-1. Agent sets `HTTPS_PROXY=http://127.0.0.1:8080` and `X-Vault-ID`
+1. Agent sets `HTTPS_PROXY=http://127.0.0.1:8080`, `X-Vault-ID`, `X-Agent-ID`, and `X-Agent-Token`
 2. Agent makes normal HTTP requests — no keys in code
 3. Proxy matches request host to stored credentials
 4. Proxy injects auth headers (Bearer token, API key header, Basic auth)
@@ -26,10 +26,23 @@ AI agents shouldn't hold raw API keys. Agent Chest runs a local HTTPS proxy that
 - Brokered access through HTTPS_PROXY, not retrieval — nothing to exfiltrate
 - Firewall-like access rules (allow/deny by host, path, method)
 - Multi-vault RBAC to scope agents to a tight blast radius
+- Explicit `/proxy/{host}/{path}` denials return JSON with `proposal_hint`
+- CONNECT denials may only be visible in the audit log; `curl` can report `000` if the tunnel never completes
 - Full audit trail of every passing call
 - Single Go binary; available as a Docker container
 
 See [AGENT_CHEST.md](./AGENT_CHEST.md) for full documentation.
+See [AGENT_ONBOARDING.md](./AGENT_ONBOARDING.md) for a no-code agent setup flow.
+
+### Agent Onboarding (No Code)
+
+From the app UI (Proxy tab):
+1. Start Proxy
+2. Add Credential, Rule, and RBAC Binding
+3. Create Invite
+4. Redeem Invite (gets `X-Agent-ID` + one-time token)
+5. Use the built-in one-click snippet exporter (`Claude Code`, `Hermes`, `OpenClaw`, `Cursor`)
+6. Copy or download snippet and paste into your agent tool config
 
 ## Core Features
 
@@ -62,7 +75,7 @@ See [AGENT_CHEST.md](./AGENT_CHEST.md) for full documentation.
 ├─────────────────────────────────────────────────────────────────┤
 │  Frontend (React + TypeScript)                                │
 │  ├── Components: VaultList, UnlockVault, VaultDashboard        │
-│  ├── ProxyManager: Credential proxy UI (start/stop/CRUD/audit) │
+│  ├── ProxyManager: Credential proxy UI (discover/CRUD/proposals/agents/audit) │
 │  ├── QuickPicker: Global hotkey overlay (Cmd+Shift+K)          │
 │  └── Settings: Theme, auto-lock, Touch ID management           │
 ├─────────────────────────────────────────────────────────────────┤
@@ -135,6 +148,7 @@ See [AGENT_CHEST.md](./AGENT_CHEST.md) for full documentation.
 ├── package.json                  # Node.js dependencies
 ├── tailwind.config.js            # Tailwind CSS config
 ├── AGENT_CHEST.md                # Agent Chest documentation
+├── AGENT_ONBOARDING.md           # No-code agent onboarding guide
 ├── CHANGELOG.md                  # Changelog
 ├── ROADMAP.md                    # Future feature plans
 └── README.md                     # This file
@@ -166,12 +180,13 @@ See [AGENT_CHEST.md](./AGENT_CHEST.md) for full documentation.
 ### Agent Chest Proxy Flow
 1. User starts proxy from the Proxy tab (or CLI)
 2. Proxy listens on `:8080` (HTTPS proxy) and `:8081` (management API)
-3. Agent configures `HTTPS_PROXY=http://127.0.0.1:8080` and sets `X-Vault-ID` header
+3. Agent configures `HTTPS_PROXY=http://127.0.0.1:8080` and sets `X-Vault-ID`, `X-Agent-ID`, and `X-Agent-Token` headers
 4. Agent makes normal HTTP(S) request to target API
 5. Proxy intercepts request, matches target host to stored credentials
 6. Proxy evaluates access rules (allow/deny)
 7. Proxy injects auth header and forwards to target
 8. Response returned to agent; request logged to audit trail
+9. If the explicit `/proxy/` endpoint or network guard blocks the request, the proxy returns JSON with `proposal_hint` so callers can surface a remediation hint
 
 ### Storing Keys in Vault
 
@@ -262,7 +277,6 @@ Deleting from app:
 | `proxy_stop` | proxy | Stop Agent Chest proxy |
 | `proxy_status` | proxy | Check proxy status |
 | `proxy_discover` | proxy | Discover available services and credential keys |
-| `proxy_status` | proxy | Check proxy status |
 | `proxy_list_credentials` | proxy | List proxy credentials |
 | `proxy_add_credential` | proxy | Add proxy credential |
 | `proxy_delete_credential` | proxy | Delete proxy credential |
@@ -272,6 +286,16 @@ Deleting from app:
 | `proxy_list_bindings` | proxy | List RBAC bindings |
 | `proxy_add_binding` | proxy | Create RBAC binding |
 | `proxy_delete_binding` | proxy | Delete RBAC binding |
+| `proxy_list_proposals` | proxy | List access proposals |
+| `proxy_create_proposal` | proxy | Create proposal |
+| `proxy_approve_proposal` | proxy | Approve proposal and materialize allow rule |
+| `proxy_deny_proposal` | proxy | Deny proposal |
+| `proxy_list_agents` | proxy | List registered agents |
+| `proxy_rotate_agent_token` | proxy | Rotate agent token |
+| `proxy_revoke_agent` | proxy | Revoke agent |
+| `proxy_list_invites` | proxy | List invites |
+| `proxy_create_invite` | proxy | Create invite |
+| `proxy_redeem_invite` | proxy | Redeem invite into agent + token |
 | `proxy_audit_log` | proxy | Query audit trail |
 
 ## Vault Integrity Diagnostics

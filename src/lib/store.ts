@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Vault, VaultData, Note, Settings, ProxyCredential, ProxyRule, ProxyBinding, AuditEntry, ProxyStatus } from './types'
+import type { Vault, VaultData, Note, Settings, ProxyCredential, ProxyRule, ProxyBinding, ProxyProposal, ProxyAgent, ProxyInvite, AuditEntry, ProxyStatus } from './types'
 
 interface VaultState {
   currentVault: Vault | null
@@ -47,11 +47,17 @@ interface VaultState {
   proxyCredentials: ProxyCredential[]
   proxyRules: ProxyRule[]
   proxyBindings: ProxyBinding[]
+  proxyProposals: ProxyProposal[]
+  proxyAgents: ProxyAgent[]
+  proxyInvites: ProxyInvite[]
   proxyAuditLog: AuditEntry[]
   setProxyStatus: (status: ProxyStatus | null) => void
   setProxyCredentials: (creds: ProxyCredential[]) => void
   setProxyRules: (rules: ProxyRule[]) => void
   setProxyBindings: (bindings: ProxyBinding[]) => void
+  setProxyProposals: (proposals: ProxyProposal[]) => void
+  setProxyAgents: (agents: ProxyAgent[]) => void
+  setProxyInvites: (invites: ProxyInvite[]) => void
   setProxyAuditLog: (entries: AuditEntry[]) => void
 }
 
@@ -77,6 +83,9 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   proxyCredentials: [],
   proxyRules: [],
   proxyBindings: [],
+  proxyProposals: [],
+  proxyAgents: [],
+  proxyInvites: [],
   proxyAuditLog: [],
 
   unlock: (vault, data, key) => set({
@@ -257,5 +266,8 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   setProxyCredentials: (creds) => set({ proxyCredentials: creds }),
   setProxyRules: (rules) => set({ proxyRules: rules }),
   setProxyBindings: (bindings) => set({ proxyBindings: bindings }),
+  setProxyProposals: (proposals) => set({ proxyProposals: proposals }),
+  setProxyAgents: (agents) => set({ proxyAgents: agents }),
+  setProxyInvites: (invites) => set({ proxyInvites: invites }),
   setProxyAuditLog: (entries) => set({ proxyAuditLog: entries }),
 }))

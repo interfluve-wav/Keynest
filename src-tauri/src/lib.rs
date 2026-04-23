@@ -27,9 +27,13 @@ pub use models::{
 pub use pgp::{pgp_delete_key, pgp_generate_key, pgp_import_key, pgp_list_keys};
 pub use proxy::{
     proxy_add_binding, proxy_add_credential, proxy_add_rule, proxy_audit_log, proxy_delete_binding,
-    proxy_delete_credential, proxy_delete_rule, proxy_discover, proxy_list_bindings, proxy_list_credentials,
-    proxy_list_rules, proxy_start, proxy_status, proxy_stop, ProxyCredential, ProxyRule,
-    ProxyBinding, AuditEntry, ProxyStatus, DiscoverService, DiscoverResponse,
+    proxy_approve_proposal, proxy_create_proposal, proxy_delete_credential, proxy_delete_rule,
+    proxy_create_invite, proxy_deny_proposal, proxy_discover, proxy_list_agents,
+    proxy_list_bindings, proxy_list_credentials, proxy_list_invites,
+    proxy_list_proposals, proxy_list_rules, proxy_redeem_invite, proxy_start, proxy_status, proxy_stop,
+    proxy_revoke_agent, proxy_rotate_agent_token, AuditEntry, DiscoverResponse, DiscoverService,
+    ProxyAgent, ProxyBinding, ProxyCredential, ProxyInvite, ProxyProposal, ProxyRedeemInviteResponse,
+    ProxyRule, ProxyStatus,
 };
 pub use settings::{settings_get, settings_reset, settings_set, Settings};
 pub use ssh::{

@@ -42,6 +42,56 @@ pub struct ProxyBinding {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyProposal {
+    pub id: String,
+    pub vault_id: String,
+    pub host: String,
+    pub path: String,
+    pub method: String,
+    pub reason: String,
+    pub agent_id: String,
+    pub status: String,
+    #[serde(default)]
+    pub created_rule_id: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub resolved_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyAgent {
+    pub id: String,
+    pub vault_id: String,
+    pub name: String,
+    pub status: String,
+    #[serde(default)]
+    pub token: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyInvite {
+    pub id: String,
+    pub code: String,
+    pub vault_id: String,
+    pub name: String,
+    pub status: String,
+    #[serde(default)]
+    pub redeemed_by: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub redeemed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyRedeemInviteResponse {
+    pub invite: ProxyInvite,
+    pub agent: ProxyAgent,
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
     pub timestamp: String,
     pub agent_id: String,
@@ -119,11 +169,23 @@ pub async fn proxy_start(
     }
 
     let proxy_binary = find_proxy_binary(&app)?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+    let agents_state_path = app_data_dir.join("agent-chest-agents.json");
+    let proposals_state_path = app_data_dir.join("agent-chest-proposals.json");
     let mut cmd = std::process::Command::new(proxy_binary);
     cmd.arg("--proxy-port")
         .arg(proxy_port.to_string())
         .arg("--mgmt-port")
-        .arg(mgmt_port.to_string());
+        .arg(mgmt_port.to_string())
+        .arg("--agents-state")
+        .arg(agents_state_path)
+        .arg("--proposals-state")
+        .arg(proposals_state_path);
 
     #[cfg(target_os = "macos")]
     {
@@ -368,6 +430,265 @@ pub async fn proxy_delete_binding(mgmt_port: Option<u16>, id: String) -> Result<
         .await
         .map_err(|e| format!("Request failed: {}", e))?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn proxy_list_proposals(
+    mgmt_port: Option<u16>,
+    vault_id: Option<String>,
+    status: Option<String>,
+) -> Result<Vec<ProxyProposal>, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let mut url = format!("{}/v1/proposals", mgmt_base_url(mgmt_port));
+    let mut query = Vec::new();
+    if let Some(v) = vault_id {
+        if !v.is_empty() {
+            query.push(format!("vault_id={}", v));
+        }
+    }
+    if let Some(s) = status {
+        if !s.is_empty() {
+            query.push(format!("status={}", s));
+        }
+    }
+    if !query.is_empty() {
+        url = format!("{}?{}", url, query.join("&"));
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let proposals: Vec<ProxyProposal> = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(proposals)
+}
+
+#[tauri::command]
+pub async fn proxy_create_proposal(
+    mgmt_port: Option<u16>,
+    proposal: ProxyProposal,
+) -> Result<ProxyProposal, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let url = format!("{}/v1/proposals", mgmt_base_url(mgmt_port));
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&proposal)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let created: ProxyProposal = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(created)
+}
+
+#[tauri::command]
+pub async fn proxy_approve_proposal(
+    mgmt_port: Option<u16>,
+    id: String,
+) -> Result<ProxyProposal, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let url = format!("{}/v1/proposals/{}/approve", mgmt_base_url(mgmt_port), id);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let updated: ProxyProposal = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn proxy_deny_proposal(
+    mgmt_port: Option<u16>,
+    id: String,
+) -> Result<ProxyProposal, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let url = format!("{}/v1/proposals/{}/deny", mgmt_base_url(mgmt_port), id);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let updated: ProxyProposal = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn proxy_list_agents(
+    mgmt_port: Option<u16>,
+    vault_id: Option<String>,
+) -> Result<Vec<ProxyAgent>, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let mut url = format!("{}/v1/agents", mgmt_base_url(mgmt_port));
+    if let Some(v) = vault_id {
+        if !v.is_empty() {
+            url = format!("{}?vault_id={}", url, v);
+        }
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let agents: Vec<ProxyAgent> = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(agents)
+}
+
+#[tauri::command]
+pub async fn proxy_rotate_agent_token(
+    mgmt_port: Option<u16>,
+    id: String,
+) -> Result<ProxyAgent, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let url = format!("{}/v1/agents/{}/rotate-token", mgmt_base_url(mgmt_port), id);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let updated: ProxyAgent = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn proxy_revoke_agent(
+    mgmt_port: Option<u16>,
+    id: String,
+) -> Result<ProxyAgent, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let url = format!("{}/v1/agents/{}/revoke", mgmt_base_url(mgmt_port), id);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let updated: ProxyAgent = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn proxy_list_invites(
+    mgmt_port: Option<u16>,
+    vault_id: Option<String>,
+) -> Result<Vec<ProxyInvite>, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let mut url = format!("{}/v1/invites", mgmt_base_url(mgmt_port));
+    if let Some(v) = vault_id {
+        if !v.is_empty() {
+            url = format!("{}?vault_id={}", url, v);
+        }
+    }
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let invites: Vec<ProxyInvite> = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(invites)
+}
+
+#[tauri::command]
+pub async fn proxy_create_invite(
+    mgmt_port: Option<u16>,
+    vault_id: String,
+    name: String,
+) -> Result<ProxyInvite, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let url = format!("{}/v1/invites", mgmt_base_url(mgmt_port));
+    let body = serde_json::json!({
+        "vault_id": vault_id,
+        "name": name
+    });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let invite: ProxyInvite = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(invite)
+}
+
+#[tauri::command]
+pub async fn proxy_redeem_invite(
+    mgmt_port: Option<u16>,
+    code: String,
+    name: Option<String>,
+) -> Result<ProxyRedeemInviteResponse, String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let url = format!("{}/v1/invites/{}/redeem", mgmt_base_url(mgmt_port), code);
+    let body = serde_json::json!({
+        "name": name.unwrap_or_default()
+    });
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(5))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    let redeemed: ProxyRedeemInviteResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Parse error: {}", e))?;
+    Ok(redeemed)
 }
 
 #[tauri::command]

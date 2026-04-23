@@ -113,6 +113,47 @@ export interface ProxyBinding {
   created_at: string
 }
 
+export interface ProxyProposal {
+  id: string
+  vault_id: string
+  host: string
+  path: string
+  method: string
+  reason: string
+  agent_id: string
+  status: 'pending' | 'approved' | 'denied'
+  created_rule_id?: string
+  created_at: string
+  resolved_at?: string
+}
+
+export interface ProxyAgent {
+  id: string
+  vault_id: string
+  name: string
+  status: 'active' | 'revoked'
+  token?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ProxyInvite {
+  id: string
+  code: string
+  vault_id: string
+  name: string
+  status: 'pending' | 'redeemed'
+  redeemed_by?: string
+  created_at: string
+  redeemed_at?: string
+}
+
+export interface ProxyRedeemInviteResponse {
+  invite: ProxyInvite
+  agent: ProxyAgent
+  token: string
+}
+
 export interface AuditEntry {
   timestamp: string
   agent_id: string

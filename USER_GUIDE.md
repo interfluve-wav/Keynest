@@ -2,6 +2,30 @@
 
 ## Getting Started
 
+### 60-Second Agent Setup (No Code)
+
+Use this when you want Claude Code, Hermes, OpenClaw, or Cursor to call APIs through KeyNest safely.
+
+1. Unlock your vault
+2. Open the **Proxy** tab
+3. Click **Start Proxy**
+4. Add one **Credential** (target API host + auth type)
+5. Add one **Rule** (allow host/path/method)
+6. Create one **RBAC Binding** (vault → credential + rule)
+7. Open **Agents** tab
+8. Click **Create Invite**
+9. Redeem invite in the same tab
+10. Pick your preset (`Claude Code`, `Hermes`, `OpenClaw`, or `Cursor`)
+11. Click **Copy Config Snippet** (or **Download Snippet**) and paste into your tool setup
+
+Required runtime values are included in the snippet:
+- `HTTPS_PROXY`
+- `X-Vault-ID`
+- `X-Agent-ID`
+- `X-Agent-Token`
+
+For deeper details, see [AGENT_ONBOARDING.md](./AGENT_ONBOARDING.md) and [AGENT_CHEST.md](./AGENT_CHEST.md).
+
 ### Creating Your First Vault
 
 1. Open SSH Vault
