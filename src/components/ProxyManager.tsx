@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Shield, Play, Square, Plus, Trash2, RefreshCw,
   Server, Lock, Eye, EyeOff, Check, XCircle,
-  FileText, Key as KeyIcon, Filter, Link, Compass, FlaskConical, BookTemplate, Sparkles
+  FileText, Key as KeyIcon, Filter, Link, Compass, FlaskConical, BookTemplate, Sparkles,
+  Activity, RotateCcw, AlertTriangle, CircleDot, Terminal
 } from 'lucide-react'
 import { useVaultStore } from '../lib/store'
 import {
-  proxyStart, proxyStop, proxyGetStatus,
+  proxyStart, proxyStop, proxyGetStatus, proxyForceReset, proxyDiagnostics,
   proxyListCredentials, proxyAddCredential, proxyDeleteCredential,
   proxyListRules, proxyAddRule, proxyDeleteRule,
   proxyListBindings, proxyAddBinding, proxyDeleteBinding,
@@ -14,7 +15,7 @@ import {
   proxyListAgents, proxyRotateAgentTokenWithTtl, proxyRevokeAgent, proxyListInvites, proxyCreateInvite, proxyRedeemInviteWithTtl,
   proxyRuleTest, proxyListPolicyTemplates, proxyApplyPolicyTemplate
 } from '../lib/api'
-import type { ProxyCredential, ProxyRule, ProxyBinding, ProxyProposal, ProxyAgent, ProxyInvite, ProxyRedeemInviteResponse, AuditEntry, DiscoverService, ProxyRuleTestResponse, ProxyPolicyTemplate } from '../lib/types'
+import type { ProxyCredential, ProxyRule, ProxyBinding, ProxyProposal, ProxyAgent, ProxyInvite, ProxyRedeemInviteResponse, AuditEntry, DiscoverService, ProxyRuleTestResponse, ProxyPolicyTemplate, ProxyDiagnostics } from '../lib/types'
 import type { ProxyStatus } from '../lib/types'
 import { ErrorBoundary } from './ErrorBoundary'
 import { toast } from './VaultDashboard'
@@ -66,12 +67,18 @@ export function ProxyManager() {
   const [showAddRule, setShowAddRule] = useState(false)
   const [showAddBinding, setShowAddBinding] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [onboardingTesting, setOnboardingTesting] = useState(false)
+  const [onboardingMessage, setOnboardingMessage] = useState('')
   const [discoverData, setDiscoverData] = useState<{ services: DiscoverService[]; available_credential_keys: string[] } | null>(null)
   const [ruleTestResult, setRuleTestResult] = useState<ProxyRuleTestResponse | null>(null)
   const [policyTemplates, setPolicyTemplates] = useState<ProxyPolicyTemplate[]>([])
+  const [diagnostics, setDiagnostics] = useState<ProxyDiagnostics | null>(null)
 
   const refreshAll = useCallback(async () => {
     const status = await proxyGetStatus().catch(() => null)
+    const diag = await proxyDiagnostics(8080, 8081).catch(() => null)
+    setDiagnostics(diag)
     setProxyStatus(status)
     if (status?.running) {
       const creds = await proxyListCredentials().catch(() => [])
@@ -166,51 +173,146 @@ export function ProxyManager() {
     }
   }
 
+  const handleForceReset = async () => {
+    setResetting(true)
+    try {
+      await withTimeout(proxyForceReset(8080, 8081), 7000, 'Force resetting proxy')
+      setProxyStatus(null)
+      setProxyCredentials([])
+      setProxyRules([])
+      setProxyBindings([])
+      setProxyProposals([])
+      setProxyAgents([])
+      setProxyInvites([])
+      setProxyAuditEntries([])
+      await refreshAll()
+      toast('Proxy force-reset complete', 'info')
+    } catch (e: any) {
+      toast(`Force reset failed: ${formatError(e)}`, 'error')
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  const handleTestSetup = async () => {
+    setOnboardingTesting(true)
+    setOnboardingMessage('')
+    try {
+      await refreshAll()
+      const status = await proxyGetStatus().catch(() => null)
+      if (!status?.running) {
+        setOnboardingMessage('Proxy is not running yet.')
+        return
+      }
+      if (!currentVault?.id) {
+        setOnboardingMessage('No vault selected.')
+        return
+      }
+
+      const creds = await proxyListCredentials().catch(() => [])
+      const rules = await proxyListRules().catch(() => [])
+      const invites = await proxyListInvites(undefined, currentVault.id).catch(() => [])
+      const test = await proxyRuleTest({
+        vault_id: currentVault.id,
+        host: 'api.openai.com',
+        path: '/v1/models',
+        method: 'GET',
+      }).catch(() => null)
+
+      if (creds.length === 0 || rules.length === 0) {
+        setOnboardingMessage('Add at least one credential and one rule to pass setup test.')
+        return
+      }
+      if (invites.length === 0) {
+        setOnboardingMessage('Create or redeem an invite to complete agent onboarding.')
+        return
+      }
+      if (!test) {
+        setOnboardingMessage('Rule test did not return a response. Check proxy diagnostics.')
+        return
+      }
+      setOnboardingMessage(`Setup test passed (${test.allow ? 'allow' : 'deny'}): ${test.reason}`)
+      setRuleTestResult(test)
+      toast('Onboarding setup test passed', 'success')
+    } catch (e) {
+      setOnboardingMessage(`Setup test failed: ${formatError(e)}`)
+      toast(`Setup test failed: ${formatError(e)}`, 'error')
+    } finally {
+      setOnboardingTesting(false)
+    }
+  }
+
   return (
     <ErrorBoundary>
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg ${proxyStatus?.running ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
-              <Server className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-slate-900 dark:text-white">Agent Chest Proxy</h3>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {proxyStatus?.running
-                  ? `Running on port ${proxyStatus.proxy_port} (mgmt: ${proxyStatus.mgmt_port})`
-                  : 'Not running'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {!proxyStatus?.running ? (
-              <button
-                onClick={handleStart}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-slate-950 font-medium rounded-lg transition-all"
-              >
-                <Play className="w-4 h-4" />
-                {loading ? 'Starting...' : 'Start Proxy'}
-              </button>
-            ) : (
-              <>
+        <div className="grid gap-4 lg:grid-cols-[1.2fr,1fr]">
+          <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/40">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className={`rounded-xl p-2.5 ${proxyStatus?.running ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+                  <Server className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold tracking-tight text-slate-900 dark:text-white">Agent Chest Proxy</h3>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                    {proxyStatus?.running
+                      ? `Running on port ${proxyStatus.proxy_port} (mgmt: ${proxyStatus.mgmt_port})`
+                      : 'Not running'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <button
                   onClick={refreshAll}
-                  className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-all hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                   title="Refresh"
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Refresh
                 </button>
+                {!proxyStatus?.running ? (
+                  <button
+                    onClick={handleStart}
+                    disabled={loading}
+                    className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-sm font-medium text-slate-950 transition-all hover:bg-emerald-400 disabled:bg-slate-300 dark:disabled:bg-slate-700"
+                  >
+                    <Play className="h-4 w-4" />
+                    {loading ? 'Starting...' : 'Start Proxy'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleStop}
+                    disabled={loading}
+                    className="inline-flex items-center gap-2 rounded-lg bg-red-500 px-3.5 py-2 text-sm font-medium text-white transition-all hover:bg-red-400 disabled:opacity-60"
+                  >
+                    <Square className="h-4 w-4" />
+                    {loading ? 'Stopping...' : 'Stop'}
+                  </button>
+                )}
                 <button
-                  onClick={handleStop}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-400 text-white font-medium rounded-lg transition-all"
+                  onClick={handleForceReset}
+                  disabled={resetting}
+                  className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-medium text-amber-700 transition-all hover:bg-amber-100 disabled:opacity-60 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/40"
+                  title="Force kill stale proxy listeners on 8080/8081"
                 >
-                  <Square className="w-4 h-4" />
-                  Stop
+                  <RotateCcw className="h-4 w-4" />
+                  {resetting ? 'Resetting...' : 'Force Reset'}
                 </button>
-              </>
-            )}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50/70 p-4 shadow-sm backdrop-blur dark:border-slate-800 dark:from-slate-900 dark:to-slate-900/40">
+            <div className="mb-2 flex items-center gap-2">
+              <Activity className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Health</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <HealthPill label="Mgmt API" ok={Boolean(diagnostics?.mgmt_reachable)} value={diagnostics?.mgmt_reachable ? 'Reachable' : 'Offline'} />
+              <HealthPill label="Proxy Port" ok={Boolean(diagnostics?.proxy_listener_pids?.length)} value={diagnostics?.proxy_listener_pids?.length ? 'Listening' : 'Idle'} />
+              <HealthPill label="Mgmt Port" ok={Boolean(diagnostics?.mgmt_listener_pids?.length)} value={diagnostics?.mgmt_listener_pids?.length ? 'Listening' : 'Idle'} />
+              <HealthPill label="Status" ok={Boolean(proxyStatus?.running)} value={proxyStatus?.running ? 'Running' : 'Stopped'} />
+            </div>
           </div>
         </div>
 
@@ -250,6 +352,9 @@ export function ProxyManager() {
                   rulesCount={proxyRules.length}
                   invitesCount={proxyInvites.length}
                   hasTestRequest={proxyAuditEntries.length > 0 || ruleTestResult !== null}
+                  testing={onboardingTesting}
+                  message={onboardingMessage}
+                  onRunTest={handleTestSetup}
                 />
               </aside>
 
@@ -314,6 +419,46 @@ export function ProxyManager() {
           </>
         )}
 
+        <div className="rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/40">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Terminal className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Diagnostics</p>
+            </div>
+            <button
+              onClick={refreshAll}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-600 transition-all hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-[1.1fr,1fr]">
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/50">
+              <DiagRow label="Proxy port" value={`${diagnostics?.proxy_port ?? 8080}`} />
+              <DiagRow label="Mgmt port" value={`${diagnostics?.mgmt_port ?? 8081}`} />
+              <DiagRow label="Proxy listeners" value={(diagnostics?.proxy_listener_pids?.length ? diagnostics.proxy_listener_pids.join(', ') : 'none')} />
+              <DiagRow label="Mgmt listeners" value={(diagnostics?.mgmt_listener_pids?.length ? diagnostics.mgmt_listener_pids.join(', ') : 'none')} />
+              <DiagRow label="Log path" value={diagnostics?.log_path || 'unavailable'} mono />
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-950/95 p-3 text-xs text-slate-200 dark:border-slate-700">
+              <div className="mb-2 flex items-center gap-2 text-slate-400">
+                <CircleDot className="h-3.5 w-3.5" />
+                <span>Recent proxy log (tail)</span>
+              </div>
+              <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-slate-200">
+                {diagnostics?.log_tail?.trim() ? diagnostics.log_tail : 'No log output yet.'}
+              </pre>
+            </div>
+          </div>
+          {!proxyStatus?.running && (
+            <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Proxy is currently stopped. Use Start Proxy, or Force Reset if you suspect stale ports.
+            </div>
+          )}
+        </div>
+
         {!proxyStatus?.running && (
           <div className="text-center py-12 border-2 border-dashed border-slate-300 rounded-2xl dark:border-slate-700">
             <Lock className="w-12 h-12 mx-auto mb-4 text-slate-400 dark:text-slate-600" />
@@ -377,6 +522,28 @@ export function ProxyManager() {
   )
 }
 
+function HealthPill({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className={`rounded-lg border px-2.5 py-2 text-xs ${
+      ok
+        ? 'border-emerald-300 bg-emerald-50/80 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300'
+        : 'border-slate-200 bg-white/70 text-slate-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300'
+    }`}>
+      <p className="font-semibold">{label}</p>
+      <p className="mt-0.5">{value}</p>
+    </div>
+  )
+}
+
+function DiagRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="grid grid-cols-[120px,1fr] gap-2 text-xs">
+      <p className="text-slate-500 dark:text-slate-400">{label}</p>
+      <p className={`text-right text-slate-700 dark:text-slate-200 ${mono ? 'font-mono text-[11px]' : ''}`}>{value}</p>
+    </div>
+  )
+}
+
 function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
     <button
@@ -398,12 +565,18 @@ function OnboardingChecklist({
   rulesCount,
   invitesCount,
   hasTestRequest,
+  testing,
+  message,
+  onRunTest,
 }: {
   statusRunning: boolean
   credentialsCount: number
   rulesCount: number
   invitesCount: number
   hasTestRequest: boolean
+  testing: boolean
+  message: string
+  onRunTest: () => void
 }) {
   const items = [
     { label: 'Start proxy', done: statusRunning },
@@ -412,6 +585,7 @@ function OnboardingChecklist({
     { label: 'Test request', done: hasTestRequest },
   ]
   const complete = items.filter(i => i.done).length
+  const pct = Math.round((complete / items.length) * 100)
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/40">
@@ -419,7 +593,13 @@ function OnboardingChecklist({
         <Sparkles className="h-4 w-4 text-emerald-500" />
         <p className="text-sm font-semibold text-slate-900 dark:text-white">Onboarding</p>
       </div>
-      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">{complete}/4 complete</p>
+      <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">{complete}/4 complete</p>
+      <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+        <div
+          className="h-full rounded-full bg-emerald-500 transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
       <div className="space-y-2">
         {items.map(item => (
           <div key={item.label} className="flex items-center gap-2 text-xs">
@@ -430,6 +610,17 @@ function OnboardingChecklist({
           </div>
         ))}
       </div>
+      <button
+        type="button"
+        onClick={onRunTest}
+        disabled={testing}
+        className="mt-3 w-full rounded-lg bg-emerald-500 px-3 py-2 text-xs font-medium text-slate-950 transition-all hover:bg-emerald-400 disabled:bg-slate-300 dark:disabled:bg-slate-700"
+      >
+        {testing ? 'Testing Setup...' : 'Test My Setup'}
+      </button>
+      {message && (
+        <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-400">{message}</p>
+      )}
     </div>
   )
 }
@@ -787,6 +978,7 @@ function AgentsList({ proxyPort, vaultId, agents, invites, onCreateInvite, onRed
   const [issuedToken, setIssuedToken] = useState('')
   const [copiedToken, setCopiedToken] = useState(false)
   const [copiedSnippet, setCopiedSnippet] = useState(false)
+  const [copiedLaunch, setCopiedLaunch] = useState(false)
   const [toolPreset, setToolPreset] = useState<'claude_code' | 'hermes' | 'openclaw' | 'cursor'>('claude_code')
   const [tokenTtl, setTokenTtl] = useState<'15m' | '1h' | '24h'>('1h')
   const [nowMs, setNowMs] = useState(Date.now())
@@ -857,7 +1049,25 @@ function AgentsList({ proxyPort, vaultId, agents, invites, onCreateInvite, onRed
     }
   }
 
+  const buildLaunchCommand = (preset: 'claude_code' | 'hermes' | 'openclaw' | 'cursor') => {
+    if (!issuedToken || !issuedAgentId) return ''
+    const exports = [
+      `export HTTPS_PROXY=http://127.0.0.1:${proxyPort}`,
+      `export X_VAULT_ID=${vaultId}`,
+      `export X_AGENT_ID=${issuedAgentId}`,
+      `export X_AGENT_TOKEN=${issuedToken}`,
+    ]
+    const launchByPreset: Record<typeof preset, string> = {
+      claude_code: 'claude',
+      hermes: 'hermes',
+      openclaw: 'openclaw',
+      cursor: '# start agent task from Cursor terminal',
+    }
+    return [...exports, launchByPreset[preset]].join(' && ')
+  }
+
   const configSnippet = buildConfigSnippet(toolPreset)
+  const launchCommand = buildLaunchCommand(toolPreset)
 
   const createInvite = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -884,6 +1094,7 @@ function AgentsList({ proxyPort, vaultId, agents, invites, onCreateInvite, onRed
       setRedeemName('')
       setCopiedToken(false)
       setCopiedSnippet(false)
+      setCopiedLaunch(false)
     } finally {
       setRedeeming(false)
     }
@@ -912,6 +1123,19 @@ function AgentsList({ proxyPort, vaultId, agents, invites, onCreateInvite, onRed
     } catch (err) {
       console.error('Failed to copy snippet', err)
       toast('Failed to copy snippet', 'error')
+    }
+  }
+
+  const copyLaunch = async () => {
+    if (!launchCommand) return
+    try {
+      await navigator.clipboard.writeText(launchCommand)
+      setCopiedLaunch(true)
+      window.setTimeout(() => setCopiedLaunch(false), 1500)
+      toast('Launch command copied', 'success')
+    } catch (err) {
+      console.error('Failed to copy launch command', err)
+      toast('Failed to copy launch command', 'error')
     }
   }
 
@@ -1019,9 +1243,15 @@ function AgentsList({ proxyPort, vaultId, agents, invites, onCreateInvite, onRed
               value={configSnippet}
               className="w-full min-h-[130px] text-xs font-mono bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-700 rounded px-2 py-2 text-slate-900 dark:text-white"
             />
+            <div className="mt-2 rounded border border-emerald-200 bg-white px-2 py-2 text-[11px] font-mono text-slate-700 dark:border-emerald-800 dark:bg-slate-900 dark:text-slate-200 break-all">
+              {launchCommand || '# redeem invite to generate launch command'}
+            </div>
             <div className="mt-2 flex items-center gap-2">
               <button onClick={copySnippet} type="button" className="px-3 py-1.5 text-xs rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-medium transition-all">
                 {copiedSnippet ? 'Snippet Copied' : 'Copy Config Snippet'}
+              </button>
+              <button onClick={copyLaunch} type="button" className="px-3 py-1.5 text-xs rounded bg-violet-500 hover:bg-violet-400 text-white font-medium transition-all">
+                {copiedLaunch ? 'Launch Copied' : 'Copy Launch Command'}
               </button>
               <button onClick={downloadSnippet} type="button" className="px-3 py-1.5 text-xs rounded bg-blue-500 hover:bg-blue-400 text-white font-medium transition-all">
                 Download Snippet

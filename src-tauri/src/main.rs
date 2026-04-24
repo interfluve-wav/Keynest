@@ -90,6 +90,8 @@ fn main() {
             keynest_tauri_lib::proxy::proxy_start,
             keynest_tauri_lib::proxy::proxy_stop,
             keynest_tauri_lib::proxy::proxy_status,
+            keynest_tauri_lib::proxy::proxy_force_reset,
+            keynest_tauri_lib::proxy::proxy_diagnostics,
             keynest_tauri_lib::proxy::proxy_list_credentials,
             keynest_tauri_lib::proxy::proxy_add_credential,
             keynest_tauri_lib::proxy::proxy_delete_credential,

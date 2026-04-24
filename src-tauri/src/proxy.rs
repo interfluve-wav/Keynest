@@ -119,6 +119,18 @@ pub struct ProxyStatus {
     pub mgmt_port: u16,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxyDiagnostics {
+    pub running: bool,
+    pub proxy_port: u16,
+    pub mgmt_port: u16,
+    pub mgmt_reachable: bool,
+    pub proxy_listener_pids: Vec<i32>,
+    pub mgmt_listener_pids: Vec<i32>,
+    pub log_path: String,
+    pub log_tail: String,
+}
+
 fn mgmt_base_url(mgmt_port: u16) -> String {
     format!("http://127.0.0.1:{}", mgmt_port)
 }
@@ -241,6 +253,39 @@ pub fn proxy_force_cleanup_ports(proxy_port: u16, mgmt_port: u16) -> Result<(), 
     let _ = maybe_kill_proxy_by_port(proxy_port)?;
     let _ = maybe_kill_proxy_by_port(mgmt_port)?;
     Ok(())
+}
+
+fn port_listener_pids(port: u16) -> Vec<i32> {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let out = std::process::Command::new("lsof")
+            .arg("-ti")
+            .arg(format!("tcp:{}", port))
+            .output();
+        if let Ok(output) = out {
+            let s = String::from_utf8_lossy(&output.stdout);
+            let mut out = Vec::new();
+            for line in s.lines() {
+                if let Ok(pid) = line.trim().parse::<i32>() {
+                    out.push(pid);
+                }
+            }
+            return out;
+        }
+    }
+    Vec::new()
+}
+
+fn tail_file_lines(path: &std::path::Path, line_count: usize) -> String {
+    let content = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => return String::new(),
+    };
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.len() <= line_count {
+        return content;
+    }
+    lines[lines.len() - line_count..].join("\n")
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -463,6 +508,49 @@ pub async fn proxy_stop(mgmt_port: Option<u16>) -> Result<(), String> {
     // Keep existing behavior for compatibility; this is now mostly redundant.
     let _ = maybe_kill_proxy_by_mgmt_port(mgmt_port)?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn proxy_force_reset(
+    proxy_port: Option<u16>,
+    mgmt_port: Option<u16>,
+) -> Result<ProxyStatus, String> {
+    let proxy_port = proxy_port.unwrap_or(8080);
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    proxy_force_cleanup_ports(proxy_port, mgmt_port)?;
+    Ok(ProxyStatus {
+        running: false,
+        proxy_port,
+        mgmt_port,
+    })
+}
+
+#[tauri::command]
+pub async fn proxy_diagnostics(
+    app: AppHandle,
+    proxy_port: Option<u16>,
+    mgmt_port: Option<u16>,
+) -> Result<ProxyDiagnostics, String> {
+    let proxy_port = proxy_port.unwrap_or(8080);
+    let mgmt_port = mgmt_port.unwrap_or(8081);
+    let running = mgmt_reachable(mgmt_port).await;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let log_path = app_data_dir.join("agent-chest-proxy.log");
+    let log_tail = tail_file_lines(&log_path, 50);
+
+    Ok(ProxyDiagnostics {
+        running,
+        proxy_port,
+        mgmt_port,
+        mgmt_reachable: running,
+        proxy_listener_pids: port_listener_pids(proxy_port),
+        mgmt_listener_pids: port_listener_pids(mgmt_port),
+        log_path: log_path.display().to_string(),
+        log_tail,
+    })
 }
 
 #[tauri::command]

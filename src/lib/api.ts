@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Vault, VaultData, ImportedKey, Settings, ProxyCredential, ProxyRule, ProxyBinding, ProxyProposal, ProxyAgent, ProxyInvite, ProxyRedeemInviteResponse, AuditEntry, ProxyStatus, DiscoverResponse, ProxyRuleTestRequest, ProxyRuleTestResponse, ProxyPolicyTemplate } from './types';
+import type { Vault, VaultData, ImportedKey, Settings, ProxyCredential, ProxyRule, ProxyBinding, ProxyProposal, ProxyAgent, ProxyInvite, ProxyRedeemInviteResponse, AuditEntry, ProxyStatus, ProxyDiagnostics, DiscoverResponse, ProxyRuleTestRequest, ProxyRuleTestResponse, ProxyPolicyTemplate } from './types';
 
 // Vault management
 export const vaultList = (): Promise<Vault[]> => invoke('vault_list');
@@ -145,6 +145,10 @@ export const proxyStop = (): Promise<void> =>
   invoke('proxy_stop', { mgmtPort: 8081 });
 export const proxyGetStatus = (mgmtPort?: number): Promise<ProxyStatus> =>
   invoke('proxy_status', { mgmtPort: mgmtPort ?? null });
+export const proxyForceReset = (proxyPort?: number, mgmtPort?: number): Promise<ProxyStatus> =>
+  invoke('proxy_force_reset', { proxyPort: proxyPort ?? null, mgmtPort: mgmtPort ?? null });
+export const proxyDiagnostics = (proxyPort?: number, mgmtPort?: number): Promise<ProxyDiagnostics> =>
+  invoke('proxy_diagnostics', { proxyPort: proxyPort ?? null, mgmtPort: mgmtPort ?? null });
 export const proxyListCredentials = (mgmtPort?: number): Promise<ProxyCredential[]> =>
   invoke('proxy_list_credentials', { mgmtPort: mgmtPort ?? null });
 export const proxyAddCredential = (credential: ProxyCredential, mgmtPort?: number): Promise<ProxyCredential> =>

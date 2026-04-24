@@ -180,6 +180,17 @@ export interface ProxyStatus {
   mgmt_port: number
 }
 
+export interface ProxyDiagnostics {
+  running: boolean
+  proxy_port: number
+  mgmt_port: number
+  mgmt_reachable: boolean
+  proxy_listener_pids: number[]
+  mgmt_listener_pids: number[]
+  log_path: string
+  log_tail: string
+}
+
 export interface DiscoverService {
   host: string
   description: string

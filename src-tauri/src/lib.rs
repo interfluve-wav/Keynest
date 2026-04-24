@@ -31,12 +31,13 @@ pub use proxy::{
     proxy_add_binding, proxy_add_credential, proxy_add_rule, proxy_apply_policy_template,
     proxy_approve_proposal, proxy_audit_log, proxy_create_invite, proxy_create_proposal,
     proxy_delete_binding, proxy_delete_credential, proxy_delete_rule, proxy_deny_proposal,
-    proxy_discover, proxy_list_agents, proxy_list_bindings, proxy_list_credentials,
-    proxy_list_invites, proxy_list_policy_templates, proxy_list_proposals, proxy_list_rules,
-    proxy_redeem_invite, proxy_revoke_agent, proxy_rotate_agent_token, proxy_rule_test,
-    proxy_start, proxy_status, proxy_stop, AuditEntry, DiscoverResponse, DiscoverService,
-    ProxyAgent, ProxyBinding, ProxyCredential, ProxyInvite, ProxyPolicyTemplate, ProxyProposal,
-    ProxyRedeemInviteResponse, ProxyRule, ProxyRuleTestRequest, ProxyRuleTestResponse, ProxyStatus,
+    proxy_diagnostics, proxy_discover, proxy_force_reset, proxy_list_agents, proxy_list_bindings,
+    proxy_list_credentials, proxy_list_invites, proxy_list_policy_templates, proxy_list_proposals,
+    proxy_list_rules, proxy_redeem_invite, proxy_revoke_agent, proxy_rotate_agent_token,
+    proxy_rule_test, proxy_start, proxy_status, proxy_stop, AuditEntry, DiscoverResponse,
+    DiscoverService, ProxyAgent, ProxyBinding, ProxyCredential, ProxyDiagnostics, ProxyInvite,
+    ProxyPolicyTemplate, ProxyProposal, ProxyRedeemInviteResponse, ProxyRule,
+    ProxyRuleTestRequest, ProxyRuleTestResponse, ProxyStatus,
 };
 pub use settings::{settings_get, settings_reset, settings_set, Settings};
 pub use ssh::{
