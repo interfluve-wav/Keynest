@@ -140,60 +140,60 @@ export const pgpListKeys = (vaultId: string): Promise<PgpKeyMetadata[]> =>
 
 // Agent Chest proxy commands
 export const proxyStart = (proxyPort?: number, mgmtPort?: number): Promise<ProxyStatus> =>
-  invoke('proxy_start', { proxyPort, mgmtPort });
+  invoke('proxy_start', { proxyPort: proxyPort ?? null, mgmtPort: mgmtPort ?? null });
 export const proxyStop = (): Promise<void> =>
   invoke('proxy_stop', { mgmtPort: 8081 });
 export const proxyGetStatus = (mgmtPort?: number): Promise<ProxyStatus> =>
-  invoke('proxy_status', { mgmtPort });
+  invoke('proxy_status', { mgmtPort: mgmtPort ?? null });
 export const proxyListCredentials = (mgmtPort?: number): Promise<ProxyCredential[]> =>
-  invoke('proxy_list_credentials', { mgmtPort });
+  invoke('proxy_list_credentials', { mgmtPort: mgmtPort ?? null });
 export const proxyAddCredential = (credential: ProxyCredential, mgmtPort?: number): Promise<ProxyCredential> =>
-  invoke('proxy_add_credential', { mgmtPort, credential });
+  invoke('proxy_add_credential', { mgmtPort: mgmtPort ?? null, credential });
 export const proxyDeleteCredential = (id: string, mgmtPort?: number): Promise<void> =>
-  invoke('proxy_delete_credential', { id, mgmtPort });
+  invoke('proxy_delete_credential', { id, mgmtPort: mgmtPort ?? null });
 export const proxyListRules = (mgmtPort?: number): Promise<ProxyRule[]> =>
-  invoke('proxy_list_rules', { mgmtPort });
+  invoke('proxy_list_rules', { mgmtPort: mgmtPort ?? null });
 export const proxyAddRule = (rule: ProxyRule, mgmtPort?: number): Promise<ProxyRule> =>
-  invoke('proxy_add_rule', { mgmtPort, rule });
+  invoke('proxy_add_rule', { mgmtPort: mgmtPort ?? null, rule });
 export const proxyDeleteRule = (id: string, mgmtPort?: number): Promise<void> =>
-  invoke('proxy_delete_rule', { id, mgmtPort });
+  invoke('proxy_delete_rule', { id, mgmtPort: mgmtPort ?? null });
 export const proxyListBindings = (mgmtPort?: number): Promise<ProxyBinding[]> =>
-  invoke('proxy_list_bindings', { mgmtPort });
+  invoke('proxy_list_bindings', { mgmtPort: mgmtPort ?? null });
 export const proxyAddBinding = (vaultId: string, credentialIds: string[], ruleIds: string[], mgmtPort?: number): Promise<ProxyBinding> =>
-  invoke('proxy_add_binding', { vaultId, credentialIds, ruleIds, mgmtPort });
+  invoke('proxy_add_binding', { vaultId, credentialIds, ruleIds, mgmtPort: mgmtPort ?? null });
 export const proxyDeleteBinding = (id: string, mgmtPort?: number): Promise<void> =>
-  invoke('proxy_delete_binding', { id, mgmtPort });
+  invoke('proxy_delete_binding', { id, mgmtPort: mgmtPort ?? null });
 export const proxyListProposals = (mgmtPort?: number, vaultId?: string, status?: string): Promise<ProxyProposal[]> =>
-  invoke('proxy_list_proposals', { mgmtPort, vaultId, status });
+  invoke('proxy_list_proposals', { mgmtPort: mgmtPort ?? null, vaultId: vaultId ?? null, status: status ?? null });
 export const proxyCreateProposal = (proposal: ProxyProposal, mgmtPort?: number): Promise<ProxyProposal> =>
-  invoke('proxy_create_proposal', { mgmtPort, proposal });
+  invoke('proxy_create_proposal', { mgmtPort: mgmtPort ?? null, proposal });
 export const proxyApproveProposal = (id: string, mgmtPort?: number): Promise<ProxyProposal> =>
-  invoke('proxy_approve_proposal', { id, mgmtPort });
+  invoke('proxy_approve_proposal', { id, mgmtPort: mgmtPort ?? null });
 export const proxyDenyProposal = (id: string, mgmtPort?: number): Promise<ProxyProposal> =>
-  invoke('proxy_deny_proposal', { id, mgmtPort });
+  invoke('proxy_deny_proposal', { id, mgmtPort: mgmtPort ?? null });
 export const proxyListAgents = (mgmtPort?: number, vaultId?: string): Promise<ProxyAgent[]> =>
-  invoke('proxy_list_agents', { mgmtPort, vaultId });
+  invoke('proxy_list_agents', { mgmtPort: mgmtPort ?? null, vaultId: vaultId ?? null });
 export const proxyRotateAgentToken = (id: string, mgmtPort?: number): Promise<ProxyAgent> =>
-  invoke('proxy_rotate_agent_token', { id, mgmtPort, ttl: '1h' });
+  invoke('proxy_rotate_agent_token', { id, mgmtPort: mgmtPort ?? null, ttl: '1h' });
 export const proxyRotateAgentTokenWithTtl = (id: string, ttl: '15m' | '1h' | '24h', mgmtPort?: number): Promise<ProxyAgent> =>
-  invoke('proxy_rotate_agent_token', { id, mgmtPort, ttl });
+  invoke('proxy_rotate_agent_token', { id, mgmtPort: mgmtPort ?? null, ttl });
 export const proxyRevokeAgent = (id: string, mgmtPort?: number): Promise<ProxyAgent> =>
-  invoke('proxy_revoke_agent', { id, mgmtPort });
+  invoke('proxy_revoke_agent', { id, mgmtPort: mgmtPort ?? null });
 export const proxyListInvites = (mgmtPort?: number, vaultId?: string): Promise<ProxyInvite[]> =>
-  invoke('proxy_list_invites', { mgmtPort, vaultId });
+  invoke('proxy_list_invites', { mgmtPort: mgmtPort ?? null, vaultId: vaultId ?? null });
 export const proxyCreateInvite = (vaultId: string, name: string, mgmtPort?: number): Promise<ProxyInvite> =>
-  invoke('proxy_create_invite', { vaultId, name, mgmtPort });
+  invoke('proxy_create_invite', { vaultId, name, mgmtPort: mgmtPort ?? null });
 export const proxyRedeemInvite = (code: string, name?: string, mgmtPort?: number): Promise<ProxyRedeemInviteResponse> =>
-  invoke('proxy_redeem_invite', { code, name, mgmtPort, ttl: '1h' });
+  invoke('proxy_redeem_invite', { code, name: name ?? null, mgmtPort: mgmtPort ?? null, ttl: '1h' });
 export const proxyRedeemInviteWithTtl = (code: string, ttl: '15m' | '1h' | '24h', name?: string, mgmtPort?: number): Promise<ProxyRedeemInviteResponse> =>
-  invoke('proxy_redeem_invite', { code, name, mgmtPort, ttl });
+  invoke('proxy_redeem_invite', { code, name: name ?? null, mgmtPort: mgmtPort ?? null, ttl });
 export const proxyAuditLog = (limit?: number, offset?: number, mgmtPort?: number): Promise<AuditEntry[]> =>
-  invoke('proxy_audit_log', { limit, offset, mgmtPort });
+  invoke('proxy_audit_log', { limit: limit ?? null, offset: offset ?? null, mgmtPort: mgmtPort ?? null });
 export const proxyDiscover = (mgmtPort?: number, vaultId?: string): Promise<DiscoverResponse> =>
-  invoke('proxy_discover', { mgmtPort, vaultId });
+  invoke('proxy_discover', { mgmtPort: mgmtPort ?? null, vaultId: vaultId ?? null });
 export const proxyRuleTest = (request: ProxyRuleTestRequest, mgmtPort?: number): Promise<ProxyRuleTestResponse> =>
-  invoke('proxy_rule_test', { request, mgmtPort });
+  invoke('proxy_rule_test', { request, mgmtPort: mgmtPort ?? null });
 export const proxyListPolicyTemplates = (mgmtPort?: number): Promise<ProxyPolicyTemplate[]> =>
-  invoke('proxy_list_policy_templates', { mgmtPort });
+  invoke('proxy_list_policy_templates', { mgmtPort: mgmtPort ?? null });
 export const proxyApplyPolicyTemplate = (vaultId: string, templateId: string, mgmtPort?: number): Promise<ProxyRule[]> =>
-  invoke('proxy_apply_policy_template', { vaultId, templateId, mgmtPort });
+  invoke('proxy_apply_policy_template', { vaultId, templateId, mgmtPort: mgmtPort ?? null });
