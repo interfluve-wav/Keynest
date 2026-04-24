@@ -142,7 +142,7 @@ export const pgpListKeys = (vaultId: string): Promise<PgpKeyMetadata[]> =>
 export const proxyStart = (proxyPort?: number, mgmtPort?: number): Promise<ProxyStatus> =>
   invoke('proxy_start', { proxyPort, mgmtPort });
 export const proxyStop = (): Promise<void> =>
-  invoke('proxy_stop');
+  invoke('proxy_stop', { mgmtPort: 8081 });
 export const proxyGetStatus = (mgmtPort?: number): Promise<ProxyStatus> =>
   invoke('proxy_status', { mgmtPort });
 export const proxyListCredentials = (mgmtPort?: number): Promise<ProxyCredential[]> =>

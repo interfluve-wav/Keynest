@@ -123,6 +123,64 @@ fn mgmt_base_url(mgmt_port: u16) -> String {
     format!("http://127.0.0.1:{}", mgmt_port)
 }
 
+async fn mgmt_reachable(mgmt_port: u16) -> bool {
+    let url = format!("{}/api/v1/status", mgmt_base_url(mgmt_port));
+    let client = reqwest::Client::new();
+    match client
+        .get(&url)
+        .timeout(std::time::Duration::from_millis(500))
+        .send()
+        .await
+    {
+        Ok(r) => r.status().is_success(),
+        Err(_) => false,
+    }
+}
+
+fn maybe_kill_proxy_by_mgmt_port(mgmt_port: u16) -> Result<bool, String> {
+    // Best-effort cleanup for cases where the app lost the child handle
+    // (e.g. app restart/crash). Only kill processes listening on mgmt_port
+    // whose command line contains "agent-chest-proxy".
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let out = std::process::Command::new("lsof")
+            .arg("-ti")
+            .arg(format!("tcp:{}", mgmt_port))
+            .output()
+            .map_err(|e| format!("Failed to run lsof: {}", e))?;
+        let s = String::from_utf8_lossy(&out.stdout);
+        let mut killed_any = false;
+        for line in s.lines() {
+            let pid = line.trim();
+            if pid.is_empty() {
+                continue;
+            }
+
+            let cmd_out = std::process::Command::new("ps")
+                .arg("-p")
+                .arg(pid)
+                .arg("-o")
+                .arg("command=")
+                .output()
+                .map_err(|e| format!("Failed to run ps: {}", e))?;
+            let cmdline = String::from_utf8_lossy(&cmd_out.stdout);
+            if !cmdline.contains("agent-chest-proxy") {
+                continue;
+            }
+
+            let _ = std::process::Command::new("kill").arg(pid).status();
+            killed_any = true;
+        }
+        return Ok(killed_any);
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        let _ = mgmt_port;
+        Ok(false)
+    }
+}
+
 fn find_proxy_binary(app: &AppHandle) -> Result<PathBuf, String> {
     let resource_dir = app
         .path()
@@ -161,6 +219,14 @@ pub async fn proxy_start(
 ) -> Result<ProxyStatus, String> {
     let proxy_port = proxy_port.unwrap_or(8080);
     let mgmt_port = mgmt_port.unwrap_or(8081);
+
+    // Handle the common case where the app restarted but the proxy is still running.
+    if mgmt_reachable(mgmt_port).await {
+        return Err(format!(
+            "Proxy already running on mgmt port {}. Stop it first (or kill the existing process).",
+            mgmt_port
+        ));
+    }
 
     let mut lock = PROXY_PROCESS
         .lock()
@@ -210,7 +276,8 @@ pub async fn proxy_start(
 }
 
 #[tauri::command]
-pub async fn proxy_stop() -> Result<(), String> {
+pub async fn proxy_stop(mgmt_port: Option<u16>) -> Result<(), String> {
+    let mgmt_port = mgmt_port.unwrap_or(8081);
     let mut lock = PROXY_PROCESS
         .lock()
         .map_err(|e| format!("Lock error: {}", e))?;
@@ -220,8 +287,12 @@ pub async fn proxy_stop() -> Result<(), String> {
             .kill()
             .map_err(|e| format!("Failed to kill proxy: {}", e))?;
         let _ = child.wait();
+        return Ok(());
     }
 
+    // Best-effort fallback: if we lost the handle, try to kill whatever is
+    // listening on the requested/default mgmt port (and looks like agent-chest-proxy).
+    let _ = maybe_kill_proxy_by_mgmt_port(mgmt_port)?;
     Ok(())
 }
 
@@ -238,6 +309,14 @@ pub async fn proxy_status(mgmt_port: Option<u16>) -> Result<ProxyStatus, String>
     };
 
     if !is_running {
+        // If we don't have a child handle, still detect a running proxy.
+        if mgmt_reachable(mgmt_port).await {
+            return Ok(ProxyStatus {
+                running: true,
+                proxy_port: mgmt_port.saturating_sub(1),
+                mgmt_port,
+            });
+        }
         return Ok(ProxyStatus {
             running: false,
             proxy_port: 0,
