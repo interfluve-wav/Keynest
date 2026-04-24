@@ -233,6 +233,13 @@ pub async fn proxy_start(
             .lock()
             .map_err(|e| format!("Lock error: {}", e))?;
 
+        if let Some(child) = lock.as_mut() {
+            // If the child already exited, clear it so we can start cleanly.
+            if let Ok(Some(_)) = child.try_wait() {
+                *lock = None;
+            }
+        }
+
         if lock.is_some() {
             return Err("Proxy is already running".to_string());
         }
@@ -246,6 +253,18 @@ pub async fn proxy_start(
             .map_err(|e| format!("Failed to create app data dir: {}", e))?;
         let agents_state_path = app_data_dir.join("agent-chest-agents.json");
         let proposals_state_path = app_data_dir.join("agent-chest-proposals.json");
+
+        // Capture stdout/stderr to a local file so startup failures are debuggable.
+        let log_path = app_data_dir.join("agent-chest-proxy.log");
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .map_err(|e| format!("Failed to open proxy log file {}: {}", log_path.display(), e))?;
+        let log_file_err = log_file
+            .try_clone()
+            .map_err(|e| format!("Failed to clone proxy log handle: {}", e))?;
+
         let mut cmd = std::process::Command::new(proxy_binary);
         cmd.arg("--proxy-port")
             .arg(proxy_port.to_string())
@@ -255,6 +274,8 @@ pub async fn proxy_start(
             .arg(agents_state_path)
             .arg("--proposals-state")
             .arg(proposals_state_path);
+        cmd.stdout(std::process::Stdio::from(log_file));
+        cmd.stderr(std::process::Stdio::from(log_file_err));
 
         #[cfg(target_os = "macos")]
         {
@@ -276,6 +297,21 @@ pub async fn proxy_start(
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    // If mgmt still isn't reachable, treat startup as failed and clean up.
+    if !mgmt_reachable(mgmt_port).await {
+        let mut lock = PROXY_PROCESS
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
+        if let Some(mut child) = lock.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        return Err(format!(
+            "Proxy failed to start (mgmt API not reachable on {}). Check ~/Library/Application Support/com.keynest.desktop/agent-chest-proxy.log",
+            mgmt_port
+        ));
     }
 
     Ok(ProxyStatus {
