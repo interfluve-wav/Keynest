@@ -228,45 +228,55 @@ pub async fn proxy_start(
         ));
     }
 
-    let mut lock = PROXY_PROCESS
-        .lock()
-        .map_err(|e| format!("Lock error: {}", e))?;
-
-    if lock.is_some() {
-        return Err("Proxy is already running".to_string());
-    }
-
-    let proxy_binary = find_proxy_binary(&app)?;
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-    std::fs::create_dir_all(&app_data_dir)
-        .map_err(|e| format!("Failed to create app data dir: {}", e))?;
-    let agents_state_path = app_data_dir.join("agent-chest-agents.json");
-    let proposals_state_path = app_data_dir.join("agent-chest-proposals.json");
-    let mut cmd = std::process::Command::new(proxy_binary);
-    cmd.arg("--proxy-port")
-        .arg(proxy_port.to_string())
-        .arg("--mgmt-port")
-        .arg(mgmt_port.to_string())
-        .arg("--agents-state")
-        .arg(agents_state_path)
-        .arg("--proposals-state")
-        .arg(proposals_state_path);
-
-    #[cfg(target_os = "macos")]
     {
-        cmd.env("DYLD_LIBRARY_PATH", "");
+        let mut lock = PROXY_PROCESS
+            .lock()
+            .map_err(|e| format!("Lock error: {}", e))?;
+
+        if lock.is_some() {
+            return Err("Proxy is already running".to_string());
+        }
+
+        let proxy_binary = find_proxy_binary(&app)?;
+        let app_data_dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+        std::fs::create_dir_all(&app_data_dir)
+            .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+        let agents_state_path = app_data_dir.join("agent-chest-agents.json");
+        let proposals_state_path = app_data_dir.join("agent-chest-proposals.json");
+        let mut cmd = std::process::Command::new(proxy_binary);
+        cmd.arg("--proxy-port")
+            .arg(proxy_port.to_string())
+            .arg("--mgmt-port")
+            .arg(mgmt_port.to_string())
+            .arg("--agents-state")
+            .arg(agents_state_path)
+            .arg("--proposals-state")
+            .arg(proposals_state_path);
+
+        #[cfg(target_os = "macos")]
+        {
+            cmd.env("DYLD_LIBRARY_PATH", "");
+        }
+
+        let child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to start proxy: {}", e))?;
+
+        *lock = Some(child);
     }
 
-    let child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to start proxy: {}", e))?;
-
-    *lock = Some(child);
-
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    // Wait briefly for the mgmt server to come up so the UI can immediately
+    // transition into the "running" state.
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(2) {
+        if mgmt_reachable(mgmt_port).await {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 
     Ok(ProxyStatus {
         running: true,
@@ -301,12 +311,30 @@ pub async fn proxy_status(mgmt_port: Option<u16>) -> Result<ProxyStatus, String>
     let mgmt_port = mgmt_port.unwrap_or(8081);
     let url = format!("{}/api/v1/status", mgmt_base_url(mgmt_port));
 
-    let is_running = {
-        let lock = PROXY_PROCESS
+    let mut is_running = false;
+    {
+        // If we have a child handle, treat it as authoritative (and clear it if exited).
+        let mut lock = PROXY_PROCESS
             .lock()
             .map_err(|e| format!("Lock error: {}", e))?;
-        lock.is_some()
-    };
+        if let Some(child) = lock.as_mut() {
+            match child.try_wait() {
+                Ok(Some(_status)) => {
+                    // Process exited.
+                    *lock = None;
+                    is_running = false;
+                }
+                Ok(None) => {
+                    is_running = true;
+                }
+                Err(_) => {
+                    // If we can't query status, assume it's still running and let the
+                    // mgmt health check provide additional confidence.
+                    is_running = true;
+                }
+            }
+        }
+    }
 
     if !is_running {
         // If we don't have a child handle, still detect a running proxy.
@@ -337,10 +365,12 @@ pub async fn proxy_status(mgmt_port: Option<u16>) -> Result<ProxyStatus, String>
             proxy_port: mgmt_port - 1,
             mgmt_port,
         }),
+        // Don't flip the UI into "stopped" just because the mgmt endpoint isn't ready yet.
+        // If the child process is alive, we can still treat it as running.
         _ => Ok(ProxyStatus {
-            running: false,
-            proxy_port: 0,
-            mgmt_port: 0,
+            running: true,
+            proxy_port: mgmt_port.saturating_sub(1),
+            mgmt_port,
         }),
     }
 }
