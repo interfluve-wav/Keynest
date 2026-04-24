@@ -294,6 +294,33 @@ func (m *Manager) Authenticate(agentID, vaultID, token string) (Agent, bool) {
 	return toPublicAgent(rec), true
 }
 
+// AuthenticateByToken resolves an active agent from token alone.
+// This is used for standard proxy-auth flows where client tooling can only
+// provide Proxy-Authorization and not custom X-* headers.
+func (m *Manager) AuthenticateByToken(token string) (Agent, bool) {
+	m.expireAgents()
+
+	if token == "" {
+		return Agent{}, false
+	}
+	tokenHash := hashToken(token)
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, rec := range m.agents {
+		if rec.Status != "active" || rec.TokenHash == "" {
+			continue
+		}
+		if len(rec.TokenHash) != len(tokenHash) {
+			continue
+		}
+		if subtle.ConstantTimeCompare([]byte(rec.TokenHash), []byte(tokenHash)) == 1 {
+			return toPublicAgent(rec), true
+		}
+	}
+	return Agent{}, false
+}
+
 func (m *Manager) expireAgents() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

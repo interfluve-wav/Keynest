@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -179,17 +180,75 @@ func (p *Proxy) denyAgentAuth(w http.ResponseWriter, status int, jsonBody bool, 
 	http.Error(w, "Unauthorized: "+reason, status)
 }
 
-func (p *Proxy) requireAgentAccess(w http.ResponseWriter, r *http.Request, start time.Time, agentID, vaultID, method, target, path string, jsonBody bool) bool {
+func parseProxyAuthorizationToken(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+
+	parts := strings.Fields(raw)
+	if len(parts) != 2 {
+		return "", false
+	}
+
+	scheme := strings.ToLower(parts[0])
+	payload := strings.TrimSpace(parts[1])
+	if payload == "" {
+		return "", false
+	}
+
+	switch scheme {
+	case "bearer":
+		return payload, true
+	case "basic":
+		decoded, err := base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			return "", false
+		}
+		userPass := string(decoded)
+		if idx := strings.IndexByte(userPass, ':'); idx >= 0 {
+			password := strings.TrimSpace(userPass[idx+1:])
+			if password != "" {
+				return password, true
+			}
+			username := strings.TrimSpace(userPass[:idx])
+			if username != "" {
+				return username, true
+			}
+			return "", false
+		}
+		userPass = strings.TrimSpace(userPass)
+		if userPass == "" {
+			return "", false
+		}
+		return userPass, true
+	default:
+		return "", false
+	}
+}
+
+func (p *Proxy) requireAgentAccess(w http.ResponseWriter, r *http.Request, start time.Time, agentID, vaultID, method, target, path string, jsonBody bool) (string, string, bool) {
 	token := strings.TrimSpace(r.Header.Get("X-Agent-Token"))
-	if agentID == "" || vaultID == "" || token == "" {
-		p.denyAgentAuth(w, http.StatusUnauthorized, jsonBody, "missing X-Agent-ID, X-Vault-ID, or X-Agent-Token", agentID, vaultID, method, target, path, r, start)
-		return false
+	if agentID != "" || vaultID != "" || token != "" {
+		if agentID == "" || vaultID == "" || token == "" {
+			p.denyAgentAuth(w, http.StatusUnauthorized, jsonBody, "missing X-Agent-ID, X-Vault-ID, or X-Agent-Token", agentID, vaultID, method, target, path, r, start)
+			return "", "", false
+		}
+		if _, ok := p.agentMgr.Authenticate(agentID, vaultID, token); ok {
+			return agentID, vaultID, true
+		}
 	}
-	if _, ok := p.agentMgr.Authenticate(agentID, vaultID, token); !ok {
-		p.denyAgentAuth(w, http.StatusUnauthorized, jsonBody, "invalid or revoked agent token", agentID, vaultID, method, target, path, r, start)
-		return false
+
+	if token, ok := parseProxyAuthorizationToken(r.Header.Get("Proxy-Authorization")); ok {
+		if agent, authOK := p.agentMgr.AuthenticateByToken(token); authOK {
+			return agent.ID, agent.VaultID, true
+		}
+		p.denyAgentAuth(w, http.StatusUnauthorized, jsonBody, "invalid or revoked proxy token", agentID, vaultID, method, target, path, r, start)
+		return "", "", false
 	}
-	return true
+
+	p.denyAgentAuth(w, http.StatusUnauthorized, jsonBody, "missing X-Agent headers or Proxy-Authorization token", agentID, vaultID, method, target, path, r, start)
+	return "", "", false
 }
 
 func (p *Proxy) ProxyHandler() http.Handler {
@@ -216,9 +275,12 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request, agentID, vaul
 	if targetPath == "" {
 		targetPath = "/"
 	}
-	if !p.requireAgentAccess(w, r, start, agentID, vaultID, r.Method, targetHost, targetPath, false) {
+	resolvedAgentID, resolvedVaultID, ok := p.requireAgentAccess(w, r, start, agentID, vaultID, r.Method, targetHost, targetPath, false)
+	if !ok {
 		return
 	}
+	agentID = resolvedAgentID
+	vaultID = resolvedVaultID
 
 	allowed, reason := p.netGuard.Allowed(targetHost)
 	if !allowed {
@@ -338,9 +400,12 @@ func (p *Proxy) handleConnect(w http.ResponseWriter, r *http.Request, agentID, v
 	if port == "" {
 		port = "443"
 	}
-	if !p.requireAgentAccess(w, r, start, agentID, vaultID, "CONNECT", net.JoinHostPort(host, port), "/", false) {
+	resolvedAgentID, resolvedVaultID, ok := p.requireAgentAccess(w, r, start, agentID, vaultID, "CONNECT", net.JoinHostPort(host, port), "/", false)
+	if !ok {
 		return
 	}
+	agentID = resolvedAgentID
+	vaultID = resolvedVaultID
 
 	allowed, reason := p.netGuard.Allowed(host)
 	if !allowed {
@@ -868,9 +933,12 @@ func (p *Proxy) ManagementHandler() http.Handler {
 			http.Error(w, "missing target host", http.StatusBadRequest)
 			return
 		}
-		if !p.requireAgentAccess(w, r, start, agentID, vaultID, r.Method, targetHost, targetPath, true) {
+		resolvedAgentID, resolvedVaultID, ok := p.requireAgentAccess(w, r, start, agentID, vaultID, r.Method, targetHost, targetPath, true)
+		if !ok {
 			return
 		}
+		agentID = resolvedAgentID
+		vaultID = resolvedVaultID
 
 		allowed, reason := p.netGuard.Allowed(targetHost)
 		if !allowed {

@@ -15,7 +15,7 @@ SSH Vault provides a secure, encrypted vault to store and manage:
 AI agents shouldn't hold raw API keys. Agent Chest runs a local HTTPS proxy that injects credentials into outbound requests, so agents never touch them.
 
 **How it works:**
-1. Agent sets `HTTPS_PROXY=http://127.0.0.1:8080`, `X-Vault-ID`, `X-Agent-ID`, and `X-Agent-Token`
+1. Agent sets `HTTPS_PROXY=http://127.0.0.1:8080` and authenticates with either `Proxy-Authorization` (Bearer/Basic) or `X-Vault-ID` + `X-Agent-ID` + `X-Agent-Token`
 2. Agent makes normal HTTP requests — no keys in code
 3. Proxy matches request host to stored credentials
 4. Proxy injects auth headers (Bearer token, API key header, Basic auth)
@@ -43,7 +43,7 @@ From the app UI (Proxy tab):
 1. Start Proxy
 2. Add Credential, Rule, and RBAC Binding
 3. Create Invite
-4. Redeem Invite (gets `X-Agent-ID` + one-time token)
+4. Redeem Invite (gets one-time token and agent context)
 5. Pick token TTL (15m/1h/24h) and copy the generated snippet
 6. Use Rule Tester to preview policy outcomes before agent execution
 7. Use the built-in one-click snippet exporter (`Claude Code`, `Hermes`, `OpenClaw`, `Cursor`)
@@ -185,7 +185,7 @@ From the app UI (Proxy tab):
 ### Agent Chest Proxy Flow
 1. User starts proxy from the Proxy tab (or CLI)
 2. Proxy listens on `:8080` (HTTPS proxy) and `:8081` (management API)
-3. Agent configures `HTTPS_PROXY=http://127.0.0.1:8080` and sets `X-Vault-ID`, `X-Agent-ID`, and `X-Agent-Token` headers
+3. Agent configures `HTTPS_PROXY=http://127.0.0.1:8080` and authenticates via `Proxy-Authorization: Bearer <token>` (or keeps the legacy `X-Vault-ID` + `X-Agent-ID` + `X-Agent-Token` headers)
 4. Agent makes normal HTTP(S) request to target API
 5. Proxy intercepts request, matches target host to stored credentials
 6. Proxy evaluates access rules (allow/deny)

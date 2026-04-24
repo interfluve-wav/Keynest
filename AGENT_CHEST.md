@@ -28,7 +28,7 @@ With Agent Chest:
 ## Features
 
 ### Brokered Access via HTTPS_PROXY
-Agents configure `HTTPS_PROXY` and send `X-Vault-ID`, `X-Agent-ID`, and `X-Agent-Token`. The proxy intercepts requests, validates agent identity and vault scope, matches the target host to stored credentials, injects auth headers, and forwards. Nothing to exfiltrate.
+Agents configure `HTTPS_PROXY` and authenticate with `Proxy-Authorization` (preferred) or legacy `X-*` headers. The proxy intercepts requests, validates agent identity and vault scope, matches the target host to stored credentials, injects auth headers, and forwards. Nothing to exfiltrate.
 
 ### Firewall-like Access Rules
 Define allow/deny rules by host pattern, path pattern, and HTTP method. Agents can only reach whitelisted endpoints.
@@ -118,12 +118,18 @@ Open the app, unlock a vault, click the **Proxy** tab, and hit **Start Proxy**. 
 
 ```bash
 export HTTPS_PROXY=http://127.0.0.1:8080
-export X_VAULT_ID=your-vault-id-here
-export X_AGENT_ID=agent-id-from-redeem
-export X_AGENT_TOKEN=agent-token-from-redeem
+export PROXY_AUTHORIZATION="Bearer agent-token-from-redeem"
 
 # Agent makes normal requests — proxy handles auth
 curl https://api.openai.com/v1/chat/completions
+```
+
+Legacy header mode is still supported:
+
+```bash
+export X_VAULT_ID=your-vault-id-here
+export X_AGENT_ID=agent-id-from-redeem
+export X_AGENT_TOKEN=agent-token-from-redeem
 ```
 
 ### 5. No-code onboarding (recommended)
@@ -167,9 +173,7 @@ For clients that can't use `HTTPS_PROXY`, requests can be made through the manag
 
 ```
 GET  http://127.0.0.1:8081/proxy/api.openai.com/v1/chat/completions
-X-Vault-ID: <vault-id>
-X-Agent-ID: <agent-id>
-X-Agent-Token: <agent-token>
+Proxy-Authorization: Bearer <agent-token>
 ```
 
 The proxy matches the target host against credentials, injects auth, and forwards over HTTPS. Returns 403 with a `proposal_hint` if the host is not allowed.
@@ -200,7 +204,9 @@ POST /v1/agents/:id/revoke
 Notes:
 - `redeem` and `rotate-token` return the one-time plaintext token.
 - `list agents` does not return plaintext tokens.
-- proxy data-plane requests require `X-Agent-ID` and `X-Agent-Token`.
+- Proxy data-plane requests accept either:
+  - `Proxy-Authorization: Bearer <token>` (or `Basic base64(user:token)`), or
+  - legacy `X-Vault-ID` + `X-Agent-ID` + `X-Agent-Token`.
 
 ### Credentials
 

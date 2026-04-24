@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -84,5 +85,36 @@ func TestExplicitProxyRequiresAgentToken(t *testing.T) {
 	h.ServeHTTP(validTokenRec, validTokenReq)
 	if validTokenRec.Code == http.StatusUnauthorized {
 		t.Fatalf("expected non-auth outcome with valid token, got 401 body=%s", validTokenRec.Body.String())
+	}
+}
+
+func TestExplicitProxyAcceptsProxyAuthorizationBearer(t *testing.T) {
+	p := newTestProxy(t)
+	h := p.ManagementHandler()
+	vaultID := "vault-auth"
+	_, token := redeemTestAgent(t, h, vaultID)
+
+	req := httptest.NewRequest(http.MethodGet, "/proxy/example.com/path", nil)
+	req.Header.Set("Proxy-Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatalf("expected non-auth outcome with Proxy-Authorization bearer token, got 401 body=%s", rec.Body.String())
+	}
+}
+
+func TestExplicitProxyAcceptsProxyAuthorizationBasicPasswordToken(t *testing.T) {
+	p := newTestProxy(t)
+	h := p.ManagementHandler()
+	vaultID := "vault-auth"
+	_, token := redeemTestAgent(t, h, vaultID)
+
+	basic := base64.StdEncoding.EncodeToString([]byte("agent:" + token))
+	req := httptest.NewRequest(http.MethodGet, "/proxy/example.com/path", nil)
+	req.Header.Set("Proxy-Authorization", "Basic "+basic)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatalf("expected non-auth outcome with Proxy-Authorization basic token, got 401 body=%s", rec.Body.String())
 	}
 }

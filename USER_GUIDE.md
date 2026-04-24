@@ -20,9 +20,14 @@ Use this when you want Claude Code, Hermes, OpenClaw, or Cursor to call APIs thr
 
 Required runtime values are included in the snippet:
 - `HTTPS_PROXY`
+- `Proxy-Authorization` (recommended: `Bearer <agent-token>`)
 - `X-Vault-ID`
 - `X-Agent-ID`
 - `X-Agent-Token`
+
+Compatibility note:
+- Most tools work best with `Proxy-Authorization`.
+- `X-*` headers are still supported as a fallback.
 
 For deeper details, see [AGENT_ONBOARDING.md](./AGENT_ONBOARDING.md) and [AGENT_CHEST.md](./AGENT_CHEST.md).
 

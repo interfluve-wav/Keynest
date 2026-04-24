@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configurable via CLI flags (`--proxy-port`, `--mgmt-port`, `--config`, `--audit-log`)
   - JSON config file support for declarative credential/rule/binding setup
   - Single Go binary, zero runtime dependencies
+- **Compatibility auth upgrade** for proxy data-plane requests:
+  - Accepts standard `Proxy-Authorization: Bearer <token>` and `Proxy-Authorization: Basic <base64(user:token)>`
+  - Derives `agent_id` and `vault_id` server-side from token-only auth (no required custom headers)
+  - Preserves legacy `X-Vault-ID` + `X-Agent-ID` + `X-Agent-Token` header flow as fallback
 
 - **Rust backend integration** (`src-tauri/src/proxy.rs`)
   - `proxy_start` — spawns the Go proxy binary as a child process
