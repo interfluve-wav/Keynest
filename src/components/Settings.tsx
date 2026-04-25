@@ -357,6 +357,41 @@ export function Settings({ onBack }: SettingsProps) {
                   When enabled, hovering over a private key shows the last 8 characters. Click to reveal full key.
                 </p>
               </div>
+
+              {/* Strict No File Write */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-slate-500" />
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Strict No File Write mode
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const updated = {
+                        ...localSettings,
+                        strict_no_file_write_mode: !localSettings.strict_no_file_write_mode,
+                      }
+                      saveSettings(updated)
+                    }}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${
+                      localSettings.strict_no_file_write_mode ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+                    }`}
+                    role="switch"
+                    aria-checked={localSettings.strict_no_file_write_mode}
+                  >
+                    <span
+                      className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        localSettings.strict_no_file_write_mode ? 'translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </label>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-500">
+                  Enabled by default. Blocks launcher script/env file generation so KeyNest never writes agent setup files to disk.
+                </p>
+              </div>
             </div>
           </section>
 

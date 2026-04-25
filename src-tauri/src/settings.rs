@@ -20,6 +20,8 @@ pub struct Settings {
     pub biometric_unlock: bool,
     #[serde(default)]
     pub reveal_on_hover: bool,
+    #[serde(default = "default_true")]
+    pub strict_no_file_write_mode: bool,
 }
 
 fn default_theme() -> String {
@@ -34,7 +36,7 @@ fn default_true() -> bool {
     true
 }
 
-const SETTINGS_KEY: &str = "app_settings";
+pub(crate) const SETTINGS_KEY: &str = "app_settings";
 
 #[tauri::command]
 pub fn settings_get(app: AppHandle) -> Result<Settings, String> {

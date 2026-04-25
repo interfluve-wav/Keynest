@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
+use tauri_plugin_store::StoreExt;
+
+use crate::settings::{Settings, SETTINGS_KEY};
 
 static PROXY_PROCESS: Mutex<Option<std::process::Child>> = Mutex::new(None);
 
@@ -1233,6 +1236,18 @@ fn sanitize_filename_component(input: &str) -> String {
     }
 }
 
+fn launcher_writes_allowed(app: &AppHandle) -> bool {
+    // Fail-closed for file writes: if settings can't be loaded, keep strict mode on.
+    let settings = match app.store("settings.db") {
+        Ok(store) => match store.get(SETTINGS_KEY) {
+            Some(value) => serde_json::from_value::<Settings>(value).unwrap_or_default(),
+            None => Settings::default(),
+        },
+        Err(_) => Settings::default(),
+    };
+    !settings.strict_no_file_write_mode
+}
+
 fn command_exists(command: &str) -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -1280,6 +1295,13 @@ pub async fn proxy_write_tool_launcher(
     agent_token: String,
     proxy_port: Option<u16>,
 ) -> Result<ProxyToolLauncherWriteResult, String> {
+    if !launcher_writes_allowed(&app) {
+        return Err(
+            "Strict No File Write mode is enabled. Disable it in Settings to generate launcher files."
+                .to_string(),
+        );
+    }
+
     let proxy_port = proxy_port.unwrap_or(8080);
     let launcher_dir = app
         .path()

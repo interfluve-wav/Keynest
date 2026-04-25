@@ -66,6 +66,7 @@ const defaultSettings: Settings = {
   theme: 'dark',
   default_ssh_key_type: 'ed25519',
   reveal_on_hover: false,
+  strict_no_file_write_mode: true,
 }
 
 export const useVaultStore = create<VaultState>((set, get) => ({

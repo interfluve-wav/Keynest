@@ -59,7 +59,7 @@ export function ProxyManager() {
   const {
     proxyStatus, proxyCredentials, proxyRules, proxyBindings, proxyProposals, proxyAgents, proxyInvites, proxyAuditLog: proxyAuditEntries,
     setProxyStatus, setProxyCredentials, setProxyRules, setProxyBindings, setProxyProposals, setProxyAgents, setProxyInvites, setProxyAuditLog: setProxyAuditEntries,
-    currentVault
+    currentVault, settings
   } = useVaultStore()
 
   const [activeTab, setActiveTab] = useState<ProxyTab>('discover')
@@ -469,7 +469,7 @@ export function ProxyManager() {
                 )}
                 {activeTab === 'bindings' && <BindingsList bindings={proxyBindings} credentials={proxyCredentials} rules={proxyRules} onDelete={async (id) => { try { await proxyDeleteBinding(id); await refreshAll(); toast('Binding deleted', 'info') } catch (e) { toast(`Delete failed: ${formatError(e)}`, 'error') } }} />}
                 {activeTab === 'proposals' && <ProposalsList proposals={proxyProposals} onApprove={async (id) => { try { await proxyApproveProposal(id); await refreshAll(); toast('Proposal approved', 'success') } catch (e) { toast(`Approve failed: ${formatError(e)}`, 'error') } }} onDeny={async (id) => { try { await proxyDenyProposal(id); await refreshAll(); toast('Proposal denied', 'info') } catch (e) { toast(`Deny failed: ${formatError(e)}`, 'error') } }} />}
-                {activeTab === 'agents' && currentVault && <AgentsList proxyPort={proxyStatus.proxy_port} vaultId={currentVault.id} agents={proxyAgents} invites={proxyInvites} panicking={panicking} onPanicRevokeAll={handlePanicRevokeAll} onCreateInvite={async (name) => { try { const invite = await proxyCreateInvite(currentVault.id, name); await refreshAll(); toast('Invite created', 'success'); return invite } catch (e) { toast(`Invite failed: ${formatError(e)}`, 'error'); throw e } }} onRedeem={async (code, name, ttl) => { try { const redeemed = await proxyRedeemInviteWithTtl(code, ttl, name); await refreshAll(); toast('Invite redeemed', 'success'); return redeemed } catch (e) { toast(`Redeem failed: ${formatError(e)}`, 'error'); throw e } }} onRotate={async (id, ttl) => { try { const rotated = await proxyRotateAgentTokenWithTtl(id, ttl); await refreshAll(); toast('Token rotated', 'success'); return rotated } catch (e) { toast(`Rotate failed: ${formatError(e)}`, 'error'); throw e } }} onRevoke={async (id) => { try { await proxyRevokeAgent(id); await refreshAll(); toast('Agent revoked', 'info') } catch (e) { toast(`Revoke failed: ${formatError(e)}`, 'error') } }} />}
+                {activeTab === 'agents' && currentVault && <AgentsList proxyPort={proxyStatus.proxy_port} vaultId={currentVault.id} agents={proxyAgents} invites={proxyInvites} panicking={panicking} strictNoFileWriteMode={settings.strict_no_file_write_mode} onPanicRevokeAll={handlePanicRevokeAll} onCreateInvite={async (name) => { try { const invite = await proxyCreateInvite(currentVault.id, name); await refreshAll(); toast('Invite created', 'success'); return invite } catch (e) { toast(`Invite failed: ${formatError(e)}`, 'error'); throw e } }} onRedeem={async (code, name, ttl) => { try { const redeemed = await proxyRedeemInviteWithTtl(code, ttl, name); await refreshAll(); toast('Invite redeemed', 'success'); return redeemed } catch (e) { toast(`Redeem failed: ${formatError(e)}`, 'error'); throw e } }} onRotate={async (id, ttl) => { try { const rotated = await proxyRotateAgentTokenWithTtl(id, ttl); await refreshAll(); toast('Token rotated', 'success'); return rotated } catch (e) { toast(`Rotate failed: ${formatError(e)}`, 'error'); throw e } }} onRevoke={async (id) => { try { await proxyRevokeAgent(id); await refreshAll(); toast('Agent revoked', 'info') } catch (e) { toast(`Revoke failed: ${formatError(e)}`, 'error') } }} />}
                 {activeTab === 'audit' && <AuditLog entries={proxyAuditEntries} />}
               </section>
             </div>
@@ -1016,12 +1016,13 @@ function ProposalsList({ proposals, onApprove, onDeny }: {
   )
 }
 
-function AgentsList({ proxyPort, vaultId, agents, invites, panicking, onPanicRevokeAll, onCreateInvite, onRedeem, onRotate, onRevoke }: {
+function AgentsList({ proxyPort, vaultId, agents, invites, panicking, strictNoFileWriteMode, onPanicRevokeAll, onCreateInvite, onRedeem, onRotate, onRevoke }: {
   proxyPort: number
   vaultId: string
   agents: ProxyAgent[]
   invites: ProxyInvite[]
   panicking: boolean
+  strictNoFileWriteMode: boolean
   onPanicRevokeAll: () => Promise<void>
   onCreateInvite: (name: string) => Promise<ProxyInvite>
   onRedeem: (code: string, name: string | undefined, ttl: '15m' | '1h' | '24h') => Promise<ProxyRedeemInviteResponse>
@@ -1155,7 +1156,6 @@ function AgentsList({ proxyPort, vaultId, agents, invites, panicking, onPanicRev
 
   const configSnippet = buildConfigSnippet(toolPreset)
   const launchCommand = buildLaunchCommand(toolPreset)
-
   const createInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inviteName.trim()) return
@@ -1289,14 +1289,19 @@ function AgentsList({ proxyPort, vaultId, agents, invites, panicking, onPanicRev
         <p className="text-[11px] text-slate-500 dark:text-slate-400">
           Writes a local launcher script + env file in app data (does not modify external tool configs).
         </p>
+        {strictNoFileWriteMode && (
+          <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+            Strict No File Write mode is enabled in Settings, so launcher file generation is blocked.
+          </p>
+        )}
         <div className="mt-2 flex items-center gap-2">
           <button
             type="button"
             onClick={writeLauncher}
-            disabled={!issuedToken || !issuedAgentId || writingLauncher}
+            disabled={!issuedToken || !issuedAgentId || writingLauncher || strictNoFileWriteMode}
             className="px-3 py-1.5 text-xs rounded bg-blue-500 hover:bg-blue-400 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white font-medium transition-all"
           >
-            {writingLauncher ? 'Writing Launcher...' : 'Write Launcher Script'}
+            {writingLauncher ? 'Writing Launcher...' : strictNoFileWriteMode ? 'Blocked by Strict Mode' : 'Write Launcher Script'}
           </button>
           {lastLauncher && (
             <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono truncate">

@@ -72,6 +72,7 @@ export interface Settings {
   theme: string
   default_ssh_key_type: string
   reveal_on_hover: boolean
+  strict_no_file_write_mode: boolean
 }
 
 export interface ImportedKey {

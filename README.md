@@ -1,6 +1,6 @@
-# SSH Vault Tauri
+# KeyNest (SSH Vault Tauri)
 
-A secure, native macOS application for managing SSH keys, API credentials, and PGP keys with Touch ID biometric authentication — now with **Agent Chest**, an HTTP credential proxy for AI agents.
+KeyNest is a secure, native macOS vault and agent-credential broker for SSH keys, API credentials, and PGP keys. It combines local encrypted storage with **Agent Chest**, a policy-aware HTTP/HTTPS proxy that brokers credentials to AI agents without exposing raw keys.
 
 ## What This App Does
 
@@ -29,6 +29,7 @@ AI agents shouldn't hold raw API keys. Agent Chest runs a local HTTPS proxy that
 - Policy templates library (OpenAI, GitHub, Stripe, AWS safe defaults)
 - Multi-vault RBAC to scope agents to a tight blast radius
 - Agent token TTLs (`15m`, `1h`, `24h`) with countdown and automatic revoke on expiry
+- Strict No File Write mode (default ON): blocks launcher script/env generation unless explicitly disabled
 - Explicit `/proxy/{host}/{path}` denials return JSON with `proposal_hint`
 - CONNECT denials may only be visible in the audit log; `curl` can report `000` if the tunnel never completes
 - Full audit trail of every passing call
@@ -48,6 +49,7 @@ From the app UI (Proxy tab):
 6. Use Rule Tester to preview policy outcomes before agent execution
 7. Use the built-in one-click snippet exporter (`Claude Code`, `Hermes`, `OpenClaw`, `Cursor`)
 8. Copy or download snippet and paste into your agent tool config
+9. Optional: disable Strict No File Write mode only if you want KeyNest to generate local launcher files
 
 ## Core Features
 

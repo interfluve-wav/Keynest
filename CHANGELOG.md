@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Accepts standard `Proxy-Authorization: Bearer <token>` and `Proxy-Authorization: Basic <base64(user:token)>`
   - Derives `agent_id` and `vault_id` server-side from token-only auth (no required custom headers)
   - Preserves legacy `X-Vault-ID` + `X-Agent-ID` + `X-Agent-Token` header flow as fallback
+- **Strict No File Write mode** (default ON):
+  - New app setting `strict_no_file_write_mode` to block launcher script/env generation by default
+  - Backend-enforced guard in `proxy_write_tool_launcher` so file writes are denied even if called directly
+  - Proxy UI now reflects strict mode and disables launcher file generation with clear messaging
 
 - **Rust backend integration** (`src-tauri/src/proxy.rs`)
   - `proxy_start` — spawns the Go proxy binary as a child process
