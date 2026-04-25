@@ -769,10 +769,10 @@ function AddKeyModal({
     if (!name) return
     setIsGenerating(true)
     try {
-      const result = await sshGenerateKey(name, keyType, comment || `${name}@keynest`)
+      const result = await sshGenerateKey(name, keyType, comment || `${name}@keychest`)
       setPublicKey(result.public_key)
       setKeyData(result.private_key)
-      setComment(comment || `${name}@keynest`)
+      setComment(comment || `${name}@keychest`)
       toast('SSH key generated', 'success')
     } catch (err) {
       toast('Failed to generate SSH key', 'error')

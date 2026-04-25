@@ -1,6 +1,6 @@
 # Agent Onboarding (No Code)
 
-This guide shows the fastest way to connect an AI agent to KeyNest without writing scripts.
+This guide shows the fastest way to connect an AI agent to KeyChest without writing scripts.
 
 ## What you get
 
@@ -14,12 +14,12 @@ This guide shows the fastest way to connect an AI agent to KeyNest without writi
 
 ## Prerequisites
 
-- KeyNest app is installed and opens successfully.
+- KeyChest app is installed and opens successfully.
 - You can unlock a vault.
 
 ## Step-by-step
 
-1. Open **Proxy** tab in KeyNest.
+1. Open **Proxy** tab in KeyChest.
 2. Click **Start Proxy**.
 3. Add at least one **Credential** (target host + auth type).
 4. Add at least one **Rule** (allow host/path/method).

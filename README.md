@@ -1,13 +1,13 @@
-# KeyNest (SSH Vault Tauri)
+# KeyChest (SSH Vault Tauri)
 
-[![CI](https://github.com/ssh-vault/ssh-vault/actions/workflows/ci.yml/badge.svg)](https://github.com/ssh-vault/ssh-vault/actions/workflows/ci.yml)
-[![Release](https://github.com/ssh-vault/ssh-vault/actions/workflows/release.yml/badge.svg)](https://github.com/ssh-vault/ssh-vault/actions/workflows/release.yml)
-[![Latest Release](https://img.shields.io/github/v/release/ssh-vault/ssh-vault)](https://github.com/ssh-vault/ssh-vault/releases)
-[![License](https://img.shields.io/github/license/ssh-vault/ssh-vault)](https://github.com/ssh-vault/ssh-vault/blob/master/LICENSE)
+[![CI](https://github.com/interfluve-wav/KeyChest/actions/workflows/ci.yml/badge.svg)](https://github.com/interfluve-wav/KeyChest/actions/workflows/ci.yml)
+[![Release](https://github.com/interfluve-wav/KeyChest/actions/workflows/release.yml/badge.svg)](https://github.com/interfluve-wav/KeyChest/actions/workflows/release.yml)
+[![Latest Release](https://img.shields.io/github/v/release/interfluve-wav/KeyChest)](https://github.com/interfluve-wav/KeyChest/releases)
+[![License](https://img.shields.io/github/license/interfluve-wav/KeyChest)](https://github.com/interfluve-wav/KeyChest/blob/master/LICENSE)
 
-KeyNest is a secure, native macOS vault and agent-credential broker for SSH keys, API credentials, and PGP keys. It combines local encrypted storage with **Agent Chest**, a policy-aware HTTP/HTTPS proxy that brokers credentials to AI agents without exposing raw keys.
+KeyChest is a secure, native macOS vault and agent-credential broker for SSH keys, API credentials, and PGP keys. It combines local encrypted storage with **Agent Chest**, a policy-aware HTTP/HTTPS proxy that brokers credentials to AI agents without exposing raw keys.
 
-**Discoverability tags:** #KeyNest #AgentChest #Tauri #Rust #Go #SSH #APIKeys #AIAgents #DevTools
+**Discoverability tags:** #KeyChest #AgentChest #Tauri #Rust #Go #SSH #APIKeys #AIAgents #DevTools
 
 ## What This App Does
 
@@ -69,7 +69,7 @@ From the app UI (Proxy tab):
 6. Use Rule Tester to preview policy outcomes before agent execution
 7. Use the built-in one-click snippet exporter (`Claude Code`, `Hermes`, `OpenClaw`, `Cursor`)
 8. Copy or download snippet and paste into your agent tool config
-9. Optional: disable Strict No File Write mode only if you want KeyNest to generate local launcher files
+9. Optional: disable Strict No File Write mode only if you want KeyChest to generate local launcher files
 
 ## Core Features
 

@@ -4,7 +4,7 @@
 
 ### 60-Second Agent Setup (No Code)
 
-Use this when you want Claude Code, Hermes, OpenClaw, or Cursor to call APIs through KeyNest safely.
+Use this when you want Claude Code, Hermes, OpenClaw, or Cursor to call APIs through KeyChest safely.
 
 1. Unlock your vault
 2. Open the **Proxy** tab

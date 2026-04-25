@@ -389,7 +389,7 @@ export function Settings({ onBack }: SettingsProps) {
                   </button>
                 </label>
                 <p className="mt-1 text-xs text-slate-600 dark:text-slate-500">
-                  Enabled by default. Blocks launcher script/env file generation so KeyNest never writes agent setup files to disk.
+                  Enabled by default. Blocks launcher script/env file generation so KeyChest never writes agent setup files to disk.
                 </p>
               </div>
             </div>

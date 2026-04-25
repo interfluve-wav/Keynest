@@ -462,7 +462,7 @@ pub async fn proxy_start(
                 if let Ok(Some(status)) = child.try_wait() {
                     *lock = None;
                     return Err(format!(
-                        "Proxy exited during startup with status {}. Check ~/Library/Application Support/com.keynest.desktop/agent-chest-proxy.log",
+                        "Proxy exited during startup with status {}. Check ~/Library/Application Support/com.keychest.desktop/agent-chest-proxy.log",
                         status
                     ));
                 }
@@ -486,7 +486,7 @@ pub async fn proxy_start(
             let _ = child.wait();
         }
         return Err(format!(
-            "Proxy failed to start (mgmt API not reachable on {}). Check ~/Library/Application Support/com.keynest.desktop/agent-chest-proxy.log",
+            "Proxy failed to start (mgmt API not reachable on {}). Check ~/Library/Application Support/com.keychest.desktop/agent-chest-proxy.log",
             mgmt_port
         ));
     }
@@ -1333,7 +1333,7 @@ pub async fn proxy_write_tool_launcher(
         return Err("Refusing to write agents.env".to_string());
     }
 
-    // Hard safety boundary: only write inside KeyNest's own launcher directory.
+    // Hard safety boundary: only write inside KeyChest's own launcher directory.
     let env_parent = env_path
         .parent()
         .ok_or("Launcher vars path has no parent")?;
@@ -1357,7 +1357,7 @@ pub async fn proxy_write_tool_launcher(
     std::fs::write(&env_path, env_body).map_err(|e| format!("Failed to write env file: {}", e))?;
 
     let script_body = format!(
-        "#!/usr/bin/env bash\nset -euo pipefail\nSCRIPT_DIR=\"$(cd \"$(dirname \"${{BASH_SOURCE[0]}}\")\" && pwd)\"\nset -a\nsource \"$SCRIPT_DIR/{env_name}\"\nset +a\necho \"Launching {label} with KeyNest proxy vars\"\nexec {cmd} \"$@\"\n",
+        "#!/usr/bin/env bash\nset -euo pipefail\nSCRIPT_DIR=\"$(cd \"$(dirname \"${{BASH_SOURCE[0]}}\")\" && pwd)\"\nset -a\nsource \"$SCRIPT_DIR/{env_name}\"\nset +a\necho \"Launching {label} with KeyChest proxy vars\"\nexec {cmd} \"$@\"\n",
         env_name = env_path
             .file_name()
             .and_then(|n| n.to_str())

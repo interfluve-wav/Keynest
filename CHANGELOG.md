@@ -131,5 +131,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - AES-256-GCM encryption for vault data
 - PBKDF2 key derivation (100k iterations)
 
-[Unreleased]: https://github.com/ssh-vault/ssh-vault/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/ssh-vault/ssh-vault/releases/tag/v0.2.0
+[Unreleased]: https://github.com/interfluve-wav/KeyChest/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/interfluve-wav/KeyChest/releases/tag/v0.2.0

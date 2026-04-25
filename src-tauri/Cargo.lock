@@ -2140,7 +2140,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "keynest-tauri"
+name = "keychest-tauri"
 version = "0.2.0"
 dependencies = [
  "aes-gcm",
