@@ -1216,6 +1216,23 @@ pub struct ProxyToolLauncherWriteResult {
     pub env_path: String,
 }
 
+fn sanitize_filename_component(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    let trimmed = out.trim_matches('_');
+    if trimmed.is_empty() {
+        "agent".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
 fn command_exists(command: &str) -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -1271,6 +1288,8 @@ pub async fn proxy_write_tool_launcher(
         .join("agent-launchers");
     std::fs::create_dir_all(&launcher_dir)
         .map_err(|e| format!("Failed to create launcher dir: {}", e))?;
+    let launcher_root = std::fs::canonicalize(&launcher_dir)
+        .map_err(|e| format!("Failed to resolve launcher dir: {}", e))?;
 
     let (tool_label, launch_command) = match tool_id.as_str() {
         "claude_code" => ("Claude Code", "claude"),
@@ -1280,8 +1299,32 @@ pub async fn proxy_write_tool_launcher(
         _ => return Err(format!("Unsupported tool: {}", tool_id)),
     };
 
-    let env_path = launcher_dir.join(format!("{}-{}.env", tool_id, agent_id));
-    let script_path = launcher_dir.join(format!("launch-{}-{}.sh", tool_id, agent_id));
+    let safe_tool_id = sanitize_filename_component(&tool_id);
+    let safe_agent_id = sanitize_filename_component(&agent_id);
+    let vars_filename = format!("launchvars-{}-{}.vars", safe_tool_id, safe_agent_id);
+    let script_filename = format!("launch-{}-{}.sh", safe_tool_id, safe_agent_id);
+    let env_path = launcher_dir.join(&vars_filename);
+    let script_path = launcher_dir.join(&script_filename);
+    if vars_filename.eq_ignore_ascii_case("agents.env")
+        || script_filename.eq_ignore_ascii_case("agents.env")
+    {
+        return Err("Refusing to write agents.env".to_string());
+    }
+
+    // Hard safety boundary: only write inside KeyNest's own launcher directory.
+    let env_parent = env_path
+        .parent()
+        .ok_or("Launcher vars path has no parent")?;
+    let script_parent = script_path
+        .parent()
+        .ok_or("Launcher script path has no parent")?;
+    let env_parent_canon = std::fs::canonicalize(env_parent)
+        .map_err(|e| format!("Failed to resolve launcher vars parent: {}", e))?;
+    let script_parent_canon = std::fs::canonicalize(script_parent)
+        .map_err(|e| format!("Failed to resolve launcher script parent: {}", e))?;
+    if env_parent_canon != launcher_root || script_parent_canon != launcher_root {
+        return Err("Refusing to write launcher outside app launcher directory".to_string());
+    }
     let env_body = format!(
         "HTTP_PROXY=http://127.0.0.1:{p}\nHTTPS_PROXY=http://127.0.0.1:{p}\nALL_PROXY=http://127.0.0.1:{p}\nNO_PROXY=127.0.0.1,localhost\nPROXY_AUTHORIZATION=Bearer {token}\nX_VAULT_ID={vault}\nX_AGENT_ID={agent}\nX_AGENT_TOKEN={token}\n",
         p = proxy_port,
@@ -1292,11 +1335,11 @@ pub async fn proxy_write_tool_launcher(
     std::fs::write(&env_path, env_body).map_err(|e| format!("Failed to write env file: {}", e))?;
 
     let script_body = format!(
-        "#!/usr/bin/env bash\nset -euo pipefail\nSCRIPT_DIR=\"$(cd \"$(dirname \"${{BASH_SOURCE[0]}}\")\" && pwd)\"\nset -a\nsource \"$SCRIPT_DIR/{env_name}\"\nset +a\necho \"Launching {label} with KeyNest proxy env\"\nexec {cmd} \"$@\"\n",
+        "#!/usr/bin/env bash\nset -euo pipefail\nSCRIPT_DIR=\"$(cd \"$(dirname \"${{BASH_SOURCE[0]}}\")\" && pwd)\"\nset -a\nsource \"$SCRIPT_DIR/{env_name}\"\nset +a\necho \"Launching {label} with KeyNest proxy vars\"\nexec {cmd} \"$@\"\n",
         env_name = env_path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("launcher.env"),
+            .unwrap_or("launcher.vars"),
         label = tool_label,
         cmd = launch_command
     );
